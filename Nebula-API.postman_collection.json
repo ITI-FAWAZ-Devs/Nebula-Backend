@@ -1,0 +1,484 @@
+{
+	"info": {
+		"_postman_id": "nebula-api-collection",
+		"name": "Nebula API",
+		"description": "Complete API collection for the Nebula Backend.\n\n## Setup\n1. Set the `baseUrl` variable (default: `http://localhost:4000`)\n2. Start with **Register** then **Login**\n3. The login request auto-saves `accessToken` and `refreshToken` to collection variables\n4. Authenticated requests use `{{accessToken}}` automatically via Bearer token\n\n## Auth Flow\n1. Register → Check email for verification token\n2. Verify Email (paste the token)\n3. Login → tokens are saved automatically\n4. Use authenticated endpoints (me, logout, change-password)\n\n## OAuth Flow\n- Open `{{baseUrl}}/auth/github` in a browser to initiate GitHub OAuth",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:4000",
+			"type": "string"
+		},
+		{
+			"key": "accessToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "refreshToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "testEmail",
+			"value": "test@example.com",
+			"type": "string"
+		},
+		{
+			"key": "testPassword",
+			"value": "Test1234!@",
+			"type": "string"
+		},
+		{
+			"key": "verificationToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "resetToken",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Auth - Public",
+			"description": "Public authentication endpoints (no token required)",
+			"item": [
+				{
+					"name": "Register",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{testEmail}}\",\n    \"password\": \"{{testPassword}}\",\n    \"fullName\": \"Test User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "register"]
+						},
+						"description": "Register a new user account.\n\n**Body:**\n- `email` (required): Valid email address\n- `password` (required): Min 8 characters\n- `fullName` (optional): User's display name\n\nA verification email will be sent to the provided email."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Registration successful', function () {",
+									"    pm.response.to.have.status(201);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.success).to.be.true;",
+									"});",
+									"",
+									"pm.test('Returns userId', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.data.userId).to.be.a('string');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{testEmail}}\",\n    \"password\": \"{{testPassword}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "login"]
+						},
+						"description": "Login with email and password.\n\n**Body:**\n- `email` (required): Registered email\n- `password` (required): Account password\n\nReturns access & refresh tokens. Tokens are also set as HTTP-only cookies."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Login successful', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.success).to.be.true;",
+									"});",
+									"",
+									"// Auto-save tokens to collection variables",
+									"const json = pm.response.json();",
+									"if (json.data && json.data.data) {",
+									"    const data = json.data.data;",
+									"    if (data.accessToken) {",
+									"        pm.collectionVariables.set('accessToken', data.accessToken);",
+									"        console.log('✅ accessToken saved');",
+									"    }",
+									"    if (data.refreshToken) {",
+									"        pm.collectionVariables.set('refreshToken', data.refreshToken);",
+									"        console.log('✅ refreshToken saved');",
+									"    }",
+									"}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Verify Email",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"token\": \"{{verificationToken}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/verify-email",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "verify-email"]
+						},
+						"description": "Verify email address using the token sent to the user's email.\n\n**Body:**\n- `token` (required): Verification token from email\n\n💡 **Tip:** Copy the token from the verification email and paste it into the `verificationToken` collection variable, or directly into the body."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Email verified', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.success).to.be.true;",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Forgot Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{testEmail}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/forgot-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "forgot-password"]
+						},
+						"description": "Request a password reset email.\n\n**Body:**\n- `email` (required): Registered email address\n\nAlways returns success to prevent email enumeration attacks."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Forgot password request sent', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.success).to.be.true;",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Reset Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"token\": \"{{resetToken}}\",\n    \"newPassword\": \"NewPassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/reset-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "reset-password"]
+						},
+						"description": "Reset password using the token from the reset email.\n\n**Body:**\n- `token` (required): Reset token from email\n- `newPassword` (required): New password (min 8 characters)\n\n💡 **Tip:** Copy the token from the reset email and paste it into the `resetToken` collection variable."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Password reset successful', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.success).to.be.true;",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Refresh Tokens",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{refreshToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/refresh",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "refresh"]
+						},
+						"description": "Refresh the access and refresh tokens using the current refresh token.\n\nSends the refresh token via `Authorization: Bearer` header.\n\nReturns new token pair and updates cookies."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Tokens refreshed', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.success).to.be.true;",
+									"});",
+									"",
+									"// Auto-save new tokens",
+									"const json = pm.response.json();",
+									"if (json.data && json.data.data) {",
+									"    const data = json.data.data;",
+									"    if (data.accessToken) {",
+									"        pm.collectionVariables.set('accessToken', data.accessToken);",
+									"        console.log('✅ accessToken refreshed');",
+									"    }",
+									"    if (data.refreshToken) {",
+									"        pm.collectionVariables.set('refreshToken', data.refreshToken);",
+									"        console.log('✅ refreshToken refreshed');",
+									"    }",
+									"}"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Auth - Protected",
+			"description": "Authenticated endpoints (requires access token)",
+			"item": [
+				{
+					"name": "Get My Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/me",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "me"]
+						},
+						"description": "Get the authenticated user's profile.\n\nReturns user info with linked OAuth accounts (sensitive fields stripped)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Profile retrieved', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.success).to.be.true;",
+									"    pm.expect(json.data.data).to.have.property('email');",
+									"    pm.expect(json.data.data).to.have.property('id');",
+									"});",
+									"",
+									"pm.test('Sensitive fields excluded', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.data).to.not.have.property('password');",
+									"    pm.expect(json.data.data).to.not.have.property('refreshToken');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Change Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"currentPassword\": \"{{testPassword}}\",\n    \"newPassword\": \"NewSecurePass123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/change-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "change-password"]
+						},
+						"description": "Change password for the authenticated user.\n\n**Body:**\n- `currentPassword` (required): Current account password\n- `newPassword` (required): New password (min 8 characters)\n\n⚠️ Only works for accounts with a password (not OAuth-only accounts)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Password changed', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.success).to.be.true;",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/logout",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "logout"]
+						},
+						"description": "Logout the authenticated user.\n\nClears the stored refresh token and auth cookies."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Logged out', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data.success).to.be.true;",
+									"});",
+									"",
+									"// Clear saved tokens",
+									"pm.collectionVariables.set('accessToken', '');",
+									"pm.collectionVariables.set('refreshToken', '');",
+									"console.log('🗑️ Tokens cleared');"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Auth - OAuth",
+			"description": "OAuth authentication flows (browser-based)",
+			"item": [
+				{
+					"name": "GitHub OAuth (Open in Browser)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/github",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "github"]
+						},
+						"description": "⚠️ **Open this URL in a browser**, not Postman!\n\nInitiates the GitHub OAuth flow. You'll be redirected to GitHub to authorize, then redirected back with tokens.\n\nThe callback URL is: `{{baseUrl}}/auth/github/callback`\n\nAfter successful auth, you'll be redirected to the frontend with tokens in the URL query params."
+					},
+					"response": []
+				},
+				{
+					"name": "GitHub OAuth Callback",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/github/callback?code=GITHUB_AUTH_CODE",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "github", "callback"],
+							"query": [
+								{
+									"key": "code",
+									"value": "GITHUB_AUTH_CODE",
+									"description": "GitHub OAuth authorization code (auto-provided by GitHub redirect)"
+								}
+							]
+						},
+						"description": "GitHub OAuth callback endpoint.\n\n⚠️ This is called automatically by GitHub after authorization. You don't need to call it manually.\n\nThe `code` parameter is provided by GitHub's OAuth redirect."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

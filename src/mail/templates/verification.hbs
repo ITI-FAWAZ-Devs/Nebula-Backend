@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify your email</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0f0f14;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f0f14;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" style="background-color:#1a1a24;border-radius:12px;border:1px solid #2a2a3a;padding:40px;">
+          <tr>
+            <td align="center" style="padding-bottom:24px;">
+              <h1 style="margin:0;color:#a78bfa;font-size:28px;font-weight:700;">Nebula</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom:16px;">
+              <p style="margin:0;color:#e4e4e7;font-size:16px;">Hi {{fullName}},</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom:32px;">
+              <p style="margin:0;color:#a1a1aa;font-size:15px;line-height:24px;">
+                Welcome to Nebula! Please verify your email address to get started with your AI Software Command Center.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding-bottom:32px;">
+              <a href="{{verificationUrl}}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">
+                Verify Email Address
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom:16px;">
+              <p style="margin:0;color:#71717a;font-size:13px;line-height:20px;">
+                If the button doesn't work, copy and paste this link into your browser:
+              </p>
+              <p style="margin:8px 0 0;color:#a78bfa;font-size:13px;word-break:break-all;">
+                {{verificationUrl}}
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top:1px solid #2a2a3a;padding-top:24px;">
+              <p style="margin:0;color:#52525b;font-size:12px;">
+                This link expires in 24 hours. If you didn't create a Nebula account, you can safely ignore this email.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
