@@ -15,8 +15,10 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return operational status', () => {
+      const result = appController.getHealth();
+      expect(result.status).toBe('operational');
+      expect(result.service).toBe('Nebula API');
     });
   });
 });

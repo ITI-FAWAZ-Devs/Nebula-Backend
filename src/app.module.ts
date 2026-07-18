@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { MailModule } from './mail/mail.module';
+import { RepositoriesModule } from './repositories/repositories.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -23,6 +24,7 @@ import { AppService } from './app.service';
     AuthModule,
     UsersModule,
     MailModule,
+    RepositoriesModule,
   ],
   controllers: [AppController],
   providers: [
