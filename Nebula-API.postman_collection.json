@@ -479,6 +479,166 @@
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "Repositories",
+			"description": "Endpoints to fetch, import, list, and delete user repositories.",
+			"item": [
+				{
+					"name": "Get GitHub Repositories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/github?force=false&page=1&limit=30",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"repositories",
+								"github"
+							],
+							"query": [
+								{
+									"key": "force",
+									"value": "false",
+									"description": "Bypass in-memory cache if true"
+								},
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (optional)"
+								},
+								{
+									"key": "limit",
+									"value": "30",
+									"description": "Items per page (optional)"
+								}
+							]
+						},
+						"description": "List the user's public and private repositories live from the GitHub REST API.\n\nRequires access token and a connected GitHub OAuth account."
+					},
+					"response": []
+				},
+				{
+					"name": "Import Repository",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"githubRepoId\": \"123456789\",\n    \"name\": \"my-cool-project\",\n    \"owner\": \"octocat\",\n    \"defaultBranch\": \"main\",\n    \"isPrivate\": false,\n    \"cloneUrl\": \"https://github.com/octocat/my-cool-project.git\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/import",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"repositories",
+								"import"
+							]
+						},
+						"description": "Imports a selected repository metadata row into the database with status `IMPORTED`."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Imported Repositories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"repositories"
+							]
+						},
+						"description": "List all repositories imported into the database by the authenticated user."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Repository Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/YOUR_REPOSITORY_UUID",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"repositories",
+								"YOUR_REPOSITORY_UUID"
+							]
+						},
+						"description": "Retrieve metadata details for one imported repository."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Imported Repository",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/YOUR_REPOSITORY_UUID",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"repositories",
+								"YOUR_REPOSITORY_UUID"
+							]
+						},
+						"description": "Remove the imported repository metadata row from the database."
+					},
+					"response": []
+				}
+			]
 		}
 	]
 }
