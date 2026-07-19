@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, UnauthorizedException, HttpException } from '@nestjs/common';
+import {
+  BadRequestException,
+  UnauthorizedException,
+  HttpException,
+} from '@nestjs/common';
 import { AuthProvider } from '@prisma/client';
 import { GithubClientService } from './github-client.service';
 import { UsersService } from '../users/users.service';
@@ -45,10 +49,9 @@ describe('GithubClientService', () => {
       await expect(service.getRepositories('user-123')).rejects.toThrow(
         BadRequestException,
       );
-      expect(mockUsersService.findAccountByUserAndProvider).toHaveBeenCalledWith(
-        'user-123',
-        AuthProvider.GITHUB,
-      );
+      expect(
+        mockUsersService.findAccountByUserAndProvider,
+      ).toHaveBeenCalledWith('user-123', AuthProvider.GITHUB);
     });
 
     it('should fetch and return repositories from GitHub (no pagination)', async () => {
@@ -121,7 +124,11 @@ describe('GithubClientService', () => {
           ok: true,
           status: 200,
           headers: {
-            get: jest.fn().mockReturnValue('Link: <https://api.github.com/...page=2>; rel="next"'),
+            get: jest
+              .fn()
+              .mockReturnValue(
+                'Link: <https://api.github.com/...page=2>; rel="next"',
+              ),
           },
           json: jest.fn().mockResolvedValue(page1),
         })
@@ -150,7 +157,9 @@ describe('GithubClientService', () => {
         ok: true,
         status: 200,
         headers: { get: jest.fn().mockReturnValue(null) },
-        json: jest.fn().mockResolvedValue([{ id: 99, owner: { login: 'owner-1' } }]),
+        json: jest
+          .fn()
+          .mockResolvedValue([{ id: 99, owner: { login: 'owner-1' } }]),
       });
 
       // First call (fetches from API)

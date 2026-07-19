@@ -10,7 +10,6 @@ export class UsersService {
     private readonly encryptionService: EncryptionService,
   ) {}
 
-
   async findById(id: string): Promise<User | null> {
     return this.prisma.user.findUnique({ where: { id } });
   }
@@ -92,10 +91,14 @@ export class UsersService {
   ) {
     const encryptedData = { ...data };
     if (data.accessToken) {
-      encryptedData.accessToken = this.encryptionService.encrypt(data.accessToken);
+      encryptedData.accessToken = this.encryptionService.encrypt(
+        data.accessToken,
+      );
     }
     if (data.refreshToken) {
-      encryptedData.refreshToken = this.encryptionService.encrypt(data.refreshToken);
+      encryptedData.refreshToken = this.encryptionService.encrypt(
+        data.refreshToken,
+      );
     }
     const account = await this.prisma.account.create({
       data: {
@@ -106,16 +109,17 @@ export class UsersService {
     return this.decryptAccount(account);
   }
 
-  async updateAccount(
-    accountId: string,
-    data: Prisma.AccountUpdateInput,
-  ) {
+  async updateAccount(accountId: string, data: Prisma.AccountUpdateInput) {
     const encryptedData = { ...data };
     if (data.accessToken && typeof data.accessToken === 'string') {
-      encryptedData.accessToken = this.encryptionService.encrypt(data.accessToken);
+      encryptedData.accessToken = this.encryptionService.encrypt(
+        data.accessToken,
+      );
     }
     if (data.refreshToken && typeof data.refreshToken === 'string') {
-      encryptedData.refreshToken = this.encryptionService.encrypt(data.refreshToken);
+      encryptedData.refreshToken = this.encryptionService.encrypt(
+        data.refreshToken,
+      );
     }
     const account = await this.prisma.account.update({
       where: { id: accountId },
@@ -124,21 +128,30 @@ export class UsersService {
     return this.decryptAccount(account);
   }
 
-  private decryptAccount<T extends { accessToken?: string | null; refreshToken?: string | null }>(account: T): T {
+  private decryptAccount<
+    T extends { accessToken?: string | null; refreshToken?: string | null },
+  >(account: T): T {
     const decrypted = { ...account };
     if (account.accessToken) {
-      decrypted.accessToken = this.encryptionService.decrypt(account.accessToken);
+      decrypted.accessToken = this.encryptionService.decrypt(
+        account.accessToken,
+      );
     }
     if (account.refreshToken) {
-      decrypted.refreshToken = this.encryptionService.decrypt(account.refreshToken);
+      decrypted.refreshToken = this.encryptionService.decrypt(
+        account.refreshToken,
+      );
     }
     return decrypted;
   }
 
-
   // ── Verification Tokens ──
 
-  async createVerificationToken(userId: string, token: string, expiresAt: Date) {
+  async createVerificationToken(
+    userId: string,
+    token: string,
+    expiresAt: Date,
+  ) {
     return this.prisma.verificationToken.create({
       data: { userId, token, expiresAt },
     });
@@ -163,7 +176,11 @@ export class UsersService {
 
   // ── Password Reset Tokens ──
 
-  async createPasswordResetToken(userId: string, token: string, expiresAt: Date) {
+  async createPasswordResetToken(
+    userId: string,
+    token: string,
+    expiresAt: Date,
+  ) {
     return this.prisma.passwordResetToken.create({
       data: { userId, token, expiresAt },
     });

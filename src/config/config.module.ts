@@ -12,10 +12,17 @@ import encryptionConfig from './encryption.config';
   imports: [
     NestConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, databaseConfig, mailConfig, githubConfig, googleConfig, encryptionConfig],
+      load: [
+        appConfig,
+        authConfig,
+        databaseConfig,
+        mailConfig,
+        githubConfig,
+        googleConfig,
+        encryptionConfig,
+      ],
       envFilePath: ['.env'],
     }),
   ],
 })
 export class ConfigModule {}
-

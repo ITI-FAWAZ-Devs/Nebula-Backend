@@ -59,11 +59,14 @@ export class AuthService {
     // Send verification email (non-blocking)
     this.mailService
       .sendVerificationEmail(user.email, user.fullName ?? '', verificationToken)
-      .catch((err) => this.logger.error('Failed to send verification email', err));
+      .catch((err) =>
+        this.logger.error('Failed to send verification email', err),
+      );
 
     return {
       success: true,
-      message: 'Registration successful. Please check your email to verify your account.',
+      message:
+        'Registration successful. Please check your email to verify your account.',
       data: { userId: user.id },
     };
   }
@@ -133,7 +136,8 @@ export class AuthService {
     if (!user) {
       return {
         success: true,
-        message: 'If an account with that email exists, a password reset link has been sent.',
+        message:
+          'If an account with that email exists, a password reset link has been sent.',
       };
     }
 
@@ -148,11 +152,14 @@ export class AuthService {
 
     this.mailService
       .sendPasswordResetEmail(user.email, user.fullName ?? '', resetToken)
-      .catch((err) => this.logger.error('Failed to send password reset email', err));
+      .catch((err) =>
+        this.logger.error('Failed to send password reset email', err),
+      );
 
     return {
       success: true,
-      message: 'If an account with that email exists, a password reset link has been sent.',
+      message:
+        'If an account with that email exists, a password reset link has been sent.',
     };
   }
 
@@ -184,7 +191,10 @@ export class AuthService {
 
   // ── Change Password ──
 
-  async changePassword(userId: string, dto: ChangePasswordDto): Promise<ApiResponse> {
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<ApiResponse> {
     const user = await this.usersService.findById(userId);
 
     if (!user || !user.password) {
@@ -193,7 +203,10 @@ export class AuthService {
       );
     }
 
-    const passwordValid = await argon2.verify(user.password, dto.currentPassword);
+    const passwordValid = await argon2.verify(
+      user.password,
+      dto.currentPassword,
+    );
     if (!passwordValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
@@ -223,7 +236,9 @@ export class AuthService {
       message: 'Profile retrieved successfully',
       data: {
         ...profile,
-        accounts: profile.accounts.map(({ accessToken, refreshToken, ...acc }) => acc),
+        accounts: profile.accounts.map(
+          ({ accessToken, refreshToken, ...acc }) => acc,
+        ),
       },
     };
   }
@@ -238,7 +253,14 @@ export class AuthService {
     avatar: string;
     accessToken: string;
   }) {
-    const { id: githubId, username, displayName, email, avatar, accessToken } = githubProfile;
+    const {
+      id: githubId,
+      username,
+      displayName,
+      email,
+      avatar,
+      accessToken,
+    } = githubProfile;
 
     // Check if this GitHub account is already linked
     const existingAccount = await this.usersService.findAccountByProvider(
@@ -305,7 +327,13 @@ export class AuthService {
     avatar: string;
     accessToken: string;
   }) {
-    const { id: googleId, displayName, email, avatar, accessToken } = googleProfile;
+    const {
+      id: googleId,
+      displayName,
+      email,
+      avatar,
+      accessToken,
+    } = googleProfile;
 
     // Check if this Google account is already linked
     const existingAccount = await this.usersService.findAccountByProvider(
@@ -361,10 +389,15 @@ export class AuthService {
   }
 
   private async issueTokens(user: User) {
-    const tokens = await this.tokenService.generateTokenPair(user.id, user.email);
+    const tokens = await this.tokenService.generateTokenPair(
+      user.id,
+      user.email,
+    );
 
     // Hash and store the refresh token
-    const hashedRefreshToken = await this.tokenService.hashToken(tokens.refreshToken);
+    const hashedRefreshToken = await this.tokenService.hashToken(
+      tokens.refreshToken,
+    );
     await this.usersService.updateRefreshToken(user.id, hashedRefreshToken);
 
     return {

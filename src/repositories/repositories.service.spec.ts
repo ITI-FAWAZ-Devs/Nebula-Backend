@@ -71,7 +71,9 @@ describe('RepositoriesService', () => {
     it('should throw ConflictException if the repository is already imported (app-level check)', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: 'existing-id' });
 
-      await expect(service.importRepository('user-123', dto)).rejects.toThrow(ConflictException);
+      await expect(service.importRepository('user-123', dto)).rejects.toThrow(
+        ConflictException,
+      );
       expect(mockPrisma.repository.create).not.toHaveBeenCalled();
     });
 
@@ -81,7 +83,9 @@ describe('RepositoriesService', () => {
       (prismaError as any).code = 'P2002';
       mockPrisma.repository.create.mockRejectedValue(prismaError);
 
-      await expect(service.importRepository('user-123', dto)).rejects.toThrow(ConflictException);
+      await expect(service.importRepository('user-123', dto)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -111,7 +115,9 @@ describe('RepositoriesService', () => {
     it('should throw NotFoundException if repository not found or not owned', async () => {
       mockPrisma.repository.findFirst.mockResolvedValue(null);
 
-      await expect(service.getImportedById('user-123', 'repo-123')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.getImportedById('user-123', 'repo-123'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -131,7 +137,9 @@ describe('RepositoriesService', () => {
     it('should throw NotFoundException if repository to delete is not found', async () => {
       mockPrisma.repository.findFirst.mockResolvedValue(null);
 
-      await expect(service.deleteImported('user-123', 'repo-123')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.deleteImported('user-123', 'repo-123'),
+      ).rejects.toThrow(NotFoundException);
       expect(mockPrisma.repository.delete).not.toHaveBeenCalled();
     });
   });

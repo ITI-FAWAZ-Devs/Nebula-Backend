@@ -30,14 +30,28 @@ export class MailService {
     });
   }
 
-  private loadTemplate(templateName: string, context: Record<string, any>): string {
-    const templatePath = path.join(__dirname, '..', '..', 'mail', 'templates', `${templateName}.hbs`);
+  private loadTemplate(
+    templateName: string,
+    context: Record<string, any>,
+  ): string {
+    const templatePath = path.join(
+      __dirname,
+      '..',
+      '..',
+      'mail',
+      'templates',
+      `${templateName}.hbs`,
+    );
     const templateSource = fs.readFileSync(templatePath, 'utf-8');
     const template = Handlebars.compile(templateSource);
     return template(context);
   }
 
-  async sendVerificationEmail(email: string, fullName: string, token: string): Promise<void> {
+  async sendVerificationEmail(
+    email: string,
+    fullName: string,
+    token: string,
+  ): Promise<void> {
     const verificationUrl = `${this.backendUrl}/api/auth/verify-email?token=${token}`;
 
     const html = this.loadTemplate('verification', {
@@ -58,7 +72,11 @@ export class MailService {
     }
   }
 
-  async sendPasswordResetEmail(email: string, fullName: string, token: string): Promise<void> {
+  async sendPasswordResetEmail(
+    email: string,
+    fullName: string,
+    token: string,
+  ): Promise<void> {
     const resetUrl = `${this.frontendUrl}/reset-password?token=${token}`;
 
     const html = this.loadTemplate('reset-password', {
@@ -75,7 +93,10 @@ export class MailService {
       });
       this.logger.log(`Password reset email sent to ${email}`);
     } catch (error) {
-      this.logger.error(`Failed to send password reset email to ${email}`, error);
+      this.logger.error(
+        `Failed to send password reset email to ${email}`,
+        error,
+      );
     }
   }
 }
