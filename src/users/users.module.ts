@@ -7,4 +7,3 @@ import { EncryptionService } from '../common/services/encryption.service';
   exports: [UsersService, EncryptionService],
 })
 export class UsersModule {}
-

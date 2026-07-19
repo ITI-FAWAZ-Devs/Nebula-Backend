@@ -35,7 +35,8 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
   ) {
-    this.isProduction = this.configService.get<string>('app.nodeEnv') === 'production';
+    this.isProduction =
+      this.configService.get<string>('app.nodeEnv') === 'production';
   }
 
   @Public()
@@ -49,7 +50,10 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.authService.login(dto);
     this.setAuthCookies(res, result.accessToken, result.refreshToken);
 
@@ -57,8 +61,6 @@ export class AuthController {
       success: true,
       message: 'Login successful',
       data: {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
         user: result.user,
       },
     };
@@ -113,15 +115,69 @@ export class AuthController {
   ) {
     try {
       await this.authService.verifyEmail({ token });
+      const frontendUrl = this.configService.get<string>('app.frontendUrl');
       res.send(`
+        <!DOCTYPE html>
         <html>
-          <head><title>Email Verified</title></head>
-          <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #e2e8f0;">
-            <div style="text-align: center; padding: 2rem; border-radius: 12px; background: #1e293b; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
-              <h1 style="color: #22c55e;">✅ Email Verified!</h1>
+          <head>
+            <title>Email Verified</title>
+            <meta http-equiv="refresh" content="3;url=${frontendUrl}" />
+            <style>
+              body {
+                background: #0f172a;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                font-family: 'Inter', sans-serif;
+                color: white;
+              }
+              .card {
+                background: #1e293b;
+                padding: 40px;
+                border-radius: 20px;
+                text-align: center;
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+                border: 1px solid #334155;
+              }
+              h1 {
+                color: #10b981;
+                margin-top: 0;
+                font-size: 2rem;
+              }
+              p {
+                color: #94a3b8;
+                font-size: 1.1rem;
+                margin: 10px 0;
+              }
+              .countdown {
+                font-weight: bold;
+                color: #38bdf8;
+                font-size: 1.2rem;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <h1>✅ Email Verified</h1>
               <p>Your email has been verified successfully.</p>
-              <p style="color: #94a3b8;">You can now close this tab and log in.</p>
+              <p>Redirecting to Nebula in <span id="countdown" class="countdown">3</span> seconds...</p>
             </div>
+            <script>
+              let seconds = 3;
+              const countdownEl = document.getElementById('countdown');
+              const interval = setInterval(() => {
+                seconds--;
+                if (countdownEl) {
+                  countdownEl.textContent = seconds;
+                }
+                if (seconds <= 0) {
+                  clearInterval(interval);
+                  window.location.href = "${frontendUrl}";
+                }
+              }, 1000);
+            </script>
           </body>
         </html>
       `);
@@ -187,14 +243,8 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const user = req.user as any;
-    const result = await this.authService.handleGithubLogin(user);
-    this.setAuthCookies(res, result.accessToken, result.refreshToken);
-
-    // Redirect to frontend with tokens (for OAuth callback handling)
-    const frontendUrl = this.configService.get<string>('app.frontendUrl');
-    res.redirect(
-      `${frontendUrl}/auth/callback?accessToken=${result.accessToken}&refreshToken=${result.refreshToken}`,
+    await this.handleOAuthCallback(req, res, (u) =>
+      this.authService.handleGithubLogin(u),
     );
   }
 
@@ -214,20 +264,30 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const user = req.user as any;
-    const result = await this.authService.handleGoogleLogin(user);
-    this.setAuthCookies(res, result.accessToken, result.refreshToken);
-
-    // Redirect to frontend with tokens (for OAuth callback handling)
-    const frontendUrl = this.configService.get<string>('app.frontendUrl');
-    res.redirect(
-      `${frontendUrl}/auth/callback?accessToken=${result.accessToken}&refreshToken=${result.refreshToken}`,
+    await this.handleOAuthCallback(req, res, (u) =>
+      this.authService.handleGoogleLogin(u),
     );
   }
 
-  // ── Private Helpers ──
+  private async handleOAuthCallback(
+    req: Request,
+    res: Response,
+    loginFn: (
+      user: any,
+    ) => Promise<{ accessToken: string; refreshToken: string }>,
+  ) {
+    const user = req.user as any;
+    const result = await loginFn(user);
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
+    const frontendUrl = this.configService.get<string>('app.frontendUrl');
+    res.redirect(`${frontendUrl}`);
+  }
 
-  private setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
+  private setAuthCookies(
+    res: Response,
+    accessToken: string,
+    refreshToken: string,
+  ) {
     const cookieOptions = this.authService.getCookieOptions(this.isProduction);
     res.cookie('nebula_access_token', accessToken, cookieOptions.access);
     res.cookie('nebula_refresh_token', refreshToken, cookieOptions.refresh);

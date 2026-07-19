@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  Query,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RepositoriesService } from './repositories.service';
 import { GithubClientService } from './github-client.service';
@@ -22,7 +31,10 @@ export class RepositoriesController {
     @Query() query: GithubRepoQueryDto,
   ) {
     const forceRefresh = query.force === 'true';
-    const allRepos = await this.githubClientService.getRepositories(userId, forceRefresh);
+    const allRepos = await this.githubClientService.getRepositories(
+      userId,
+      forceRefresh,
+    );
 
     // Apply pagination if parameters are provided
     if (query.page || query.limit) {
@@ -63,7 +75,10 @@ export class RepositoriesController {
     @CurrentUser('id') userId: string,
     @Body() dto: ImportRepoDto,
   ) {
-    const importedRepo = await this.repositoriesService.importRepository(userId, dto);
+    const importedRepo = await this.repositoriesService.importRepository(
+      userId,
+      dto,
+    );
     return {
       success: true,
       message: 'Repository imported successfully',

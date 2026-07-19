@@ -13,7 +13,12 @@ async function bootstrap() {
 
   // Global prefix
   app.setGlobalPrefix('api', {
-    exclude: ['auth/github', 'auth/github/callback', 'auth/google', 'auth/google/callback'],
+    exclude: [
+      'auth/github',
+      'auth/github/callback',
+      'auth/google',
+      'auth/google/callback',
+    ],
   });
 
   // Cookie parser

@@ -1,4 +1,8 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { RepositoryStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ImportRepoDto } from './dto/import-repo.dto';
@@ -42,7 +46,9 @@ export class RepositoriesService {
     } catch (error: any) {
       // P2002 is Prisma's code for unique constraint violation
       if (error?.code === 'P2002') {
-        throw new ConflictException('This repository has already been imported.');
+        throw new ConflictException(
+          'This repository has already been imported.',
+        );
       }
       throw error;
     }
