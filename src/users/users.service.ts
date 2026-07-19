@@ -30,7 +30,31 @@ export class UsersService {
   }
 
   async create(data: Prisma.UserCreateInput): Promise<User> {
-    return this.prisma.user.create({ data });
+    const createData = { ...data };
+    if (createData.accounts?.create) {
+      if (Array.isArray(createData.accounts.create)) {
+        createData.accounts.create = createData.accounts.create.map((acc) => ({
+          ...acc,
+          accessToken: acc.accessToken
+            ? this.encryptionService.encrypt(acc.accessToken)
+            : acc.accessToken,
+          refreshToken: acc.refreshToken
+            ? this.encryptionService.encrypt(acc.refreshToken)
+            : acc.refreshToken,
+        }));
+      } else {
+        createData.accounts.create = {
+          ...createData.accounts.create,
+          accessToken: createData.accounts.create.accessToken
+            ? this.encryptionService.encrypt(createData.accounts.create.accessToken)
+            : createData.accounts.create.accessToken,
+          refreshToken: createData.accounts.create.refreshToken
+            ? this.encryptionService.encrypt(createData.accounts.create.refreshToken)
+            : createData.accounts.create.refreshToken,
+        };
+      }
+    }
+    return this.prisma.user.create({ data: createData });
   }
 
   async update(id: string, data: Prisma.UserUpdateInput): Promise<User> {
@@ -133,16 +157,20 @@ export class UsersService {
   >(account: T): T {
     const decrypted = { ...account };
     if (account.accessToken) {
-      decrypted.accessToken = this.encryptionService.decrypt(
-        account.accessToken,
-      );
+      decrypted.accessToken = this.tryDecryptToken(account.accessToken);
     }
     if (account.refreshToken) {
-      decrypted.refreshToken = this.encryptionService.decrypt(
-        account.refreshToken,
-      );
+      decrypted.refreshToken = this.tryDecryptToken(account.refreshToken);
     }
     return decrypted;
+  }
+
+  private tryDecryptToken(token: string): string {
+    try {
+      return this.encryptionService.decrypt(token);
+    } catch {
+      return token;
+    }
   }
 
   // ── Verification Tokens ──
