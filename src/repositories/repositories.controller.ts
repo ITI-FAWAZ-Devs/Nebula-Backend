@@ -11,6 +11,7 @@ import {
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RepositoriesService } from './repositories.service';
 import { GithubClientService } from './github-client.service';
+import { AnalysisService } from '../analysis/analysis.service';
 import { ImportRepoDto } from './dto/import-repo.dto';
 import { GithubRepoQueryDto } from './dto/github-repo-query.dto';
 
@@ -19,6 +20,7 @@ export class RepositoriesController {
   constructor(
     private readonly repositoriesService: RepositoriesService,
     private readonly githubClientService: GithubClientService,
+    private readonly analysisService: AnalysisService,
   ) {}
 
   /**
@@ -97,6 +99,40 @@ export class RepositoriesController {
       success: true,
       message: 'Imported repositories retrieved successfully',
       data: repos,
+    };
+  }
+
+  /**
+   * POST /repositories/:id/analyze
+   * Starts an async analysis job for the imported repository.
+   */
+  @Post(':id/analyze')
+  async analyzeRepository(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const job = await this.analysisService.startAnalysis(userId, id);
+    return {
+      success: true,
+      message: 'Analysis job started',
+      data: job,
+    };
+  }
+
+  /**
+   * GET /repositories/:id/analysis
+   * Returns the latest analysis job status for polling.
+   */
+  @Get(':id/analysis')
+  async getAnalysisStatus(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const job = await this.analysisService.getLatestJob(userId, id);
+    return {
+      success: true,
+      message: 'Analysis job retrieved successfully',
+      data: job,
     };
   }
 

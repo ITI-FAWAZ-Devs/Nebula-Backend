@@ -90,22 +90,48 @@ enum RepositoryStatus {
 }
 
 model Repository {
-  id                 String           @id @default(uuid())
-  githubRepoId       String
-  name               String
-  owner              String
-  defaultBranch      String
-  isPrivate          Boolean          @default(false)
-  cloneUrl           String
-  localPath          String?
-  status             RepositoryStatus @default(IMPORTED)
-  lastIndexedCommit  String?
-  userId             String
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  id                String           @id @default(uuid())
+  githubRepoId      String
+  name              String
+  owner             String
+  defaultBranch     String
+  isPrivate         Boolean          @default(false)
+  cloneUrl          String
+  localPath         String?
+  status            RepositoryStatus @default(IMPORTED)
+  lastIndexedCommit String?
+  userId            String
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
-  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysisJobs AnalysisJob[]
 
   @@unique([userId, githubRepoId])
   @@map("repositories")
+}
+
+enum AnalysisJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model AnalysisJob {
+  id           String            @id @default(uuid())
+  repositoryId String
+  status       AnalysisJobStatus @default(QUEUED)
+  stage        String?
+  error        String?
+  queueJobId   String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId])
+  @@map("analysis_jobs")
 }

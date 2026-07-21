@@ -7,6 +7,10 @@ import mailConfig from './mail.config';
 import githubConfig from './github.config';
 import googleConfig from './google.config';
 import encryptionConfig from './encryption.config';
+import redisConfig from './redis.config';
+import workspaceConfig from './workspace.config';
+import graphifyConfig from './graphify.config';
+import neo4jConfig from './neo4j.config';
 
 @Module({
   imports: [
@@ -20,6 +24,10 @@ import encryptionConfig from './encryption.config';
         githubConfig,
         googleConfig,
         encryptionConfig,
+        redisConfig,
+        workspaceConfig,
+        graphifyConfig,
+        neo4jConfig,
       ],
       envFilePath: ['.env'],
     }),
