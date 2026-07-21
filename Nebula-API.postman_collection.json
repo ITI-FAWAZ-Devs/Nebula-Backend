@@ -40,6 +40,11 @@
 			"key": "resetToken",
 			"value": "",
 			"type": "string"
+		},
+		{
+			"key": "repositoryId",
+			"value": "",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -482,7 +487,7 @@
 		},
 		{
 			"name": "Repositories",
-			"description": "Endpoints to fetch, import, list, and delete user repositories.",
+			"description": "Endpoints to fetch, import, list, analyze, and delete user repositories.\n\n## Analysis flow\n1. Import a repository (or list imported ones)\n2. Set `repositoryId` collection variable to the imported repo UUID\n3. **Analyze Repository** — starts an async BullMQ job (returns immediately)\n4. **Get Analysis Status** — poll until status is `COMPLETED` or `FAILED`",
 			"item": [
 				{
 					"name": "Get GitHub Repositories",
@@ -598,17 +603,71 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseUrl}}/api/repositories/YOUR_REPOSITORY_UUID",
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}",
 							"host": [
 								"{{baseUrl}}"
 							],
 							"path": [
 								"api",
 								"repositories",
-								"YOUR_REPOSITORY_UUID"
+								"{{repositoryId}}"
 							]
 						},
-						"description": "Retrieve metadata details for one imported repository."
+						"description": "Retrieve metadata details for one imported repository.\n\nSet the `repositoryId` collection variable to the imported repo UUID."
+					},
+					"response": []
+				},
+				{
+					"name": "Analyze Repository",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/analyze",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"repositories",
+								"{{repositoryId}}",
+								"analyze"
+							]
+						},
+						"description": "Start an async analysis job for an imported repository.\n\nThe controller only enqueues the job and returns immediately. Pipeline stages:\n1. Clone repository\n2. Repository discovery\n3. Graphify analysis\n4. Normalize output\n5. Build knowledge graph\n6. Save to Neo4j\n7. Cleanup workspace\n\nReturns an `AnalysisJob` with status `QUEUED`. Poll **Get Analysis Status** for progress.\n\nRequires Redis (BullMQ) and a linked GitHub OAuth account for cloning."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Analysis Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/analysis",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"repositories",
+								"{{repositoryId}}",
+								"analysis"
+							]
+						},
+						"description": "Get the latest analysis job for a repository (for polling).\n\n**Job status:** `QUEUED` | `RUNNING` | `COMPLETED` | `FAILED`\n\n**Stage examples:** `queued`, `workspace`, `clone`, `discovery`, `graphify`, `normalize`, `build_graph`, `save_neo4j`, `done`\n\nOn failure, `error` contains the message."
 					},
 					"response": []
 				},
@@ -624,14 +683,14 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseUrl}}/api/repositories/YOUR_REPOSITORY_UUID",
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}",
 							"host": [
 								"{{baseUrl}}"
 							],
 							"path": [
 								"api",
 								"repositories",
-								"YOUR_REPOSITORY_UUID"
+								"{{repositoryId}}"
 							]
 						},
 						"description": "Remove the imported repository metadata row from the database."

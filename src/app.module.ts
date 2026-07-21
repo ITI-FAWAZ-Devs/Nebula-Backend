@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { BullModule } from '@nestjs/bullmq';
+import { ConfigService } from '@nestjs/config';
 import { ConfigModule } from './config/config.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { MailModule } from './mail/mail.module';
 import { RepositoriesModule } from './repositories/repositories.module';
+import { AnalysisModule } from './analysis/analysis.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -15,6 +18,16 @@ import { AppService } from './app.service';
   imports: [
     ConfigModule,
     PrismaModule,
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.get<string>('redis.host') || 'localhost',
+          port: configService.get<number>('redis.port') || 6379,
+          password: configService.get<string>('redis.password') || undefined,
+        },
+      }),
+    }),
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
@@ -25,6 +38,7 @@ import { AppService } from './app.service';
     UsersModule,
     MailModule,
     RepositoriesModule,
+    AnalysisModule,
   ],
   controllers: [AppController],
   providers: [

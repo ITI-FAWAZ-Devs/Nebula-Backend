@@ -47,6 +47,9 @@ lerna-debug.log*
 .temp
 .tmp
 
+# Analysis workspaces (cloned repos)
+/workspace
+
 # Runtime data
 pids
 *.pid
