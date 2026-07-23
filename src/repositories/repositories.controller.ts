@@ -7,6 +7,10 @@ import {
   Param,
   Query,
   ParseUUIDPipe,
+  NotFoundException,
+  ForbiddenException,
+  ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RepositoriesService } from './repositories.service';
@@ -14,13 +18,23 @@ import { GithubClientService } from './github-client.service';
 import { AnalysisService } from '../analysis/analysis.service';
 import { ImportRepoDto } from './dto/import-repo.dto';
 import { GithubRepoQueryDto } from './dto/github-repo-query.dto';
+import { DocumentationPipeline } from './documentation.pipeline';
+import { AskService } from './ask.service';
+import { AskQuestionDto } from './dto/ask-question.dto';
+import { PrismaService } from '../prisma/prisma.service';
+import { DocumentationJobStatus } from '@prisma/client';
 
 @Controller('repositories')
 export class RepositoriesController {
+  private readonly logger = new Logger(RepositoriesController.name);
+
   constructor(
     private readonly repositoriesService: RepositoriesService,
     private readonly githubClientService: GithubClientService,
     private readonly analysisService: AnalysisService,
+    private readonly documentationPipeline: DocumentationPipeline,
+    private readonly askService: AskService,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -166,6 +180,138 @@ export class RepositoriesController {
     return {
       success: true,
       message: 'Repository removed successfully',
+      data: result,
+    };
+  }
+
+  /**
+   * POST /repositories/:id/document
+   * Starts an async documentation indexing job for the imported repository.
+   */
+  @Post(':id/document')
+  async documentRepository(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const repository = await this.prisma.repository.findFirst({
+      where: { id },
+    });
+
+    if (!repository) {
+      throw new NotFoundException('Repository not found');
+    }
+
+    if (repository.userId !== userId) {
+      throw new ForbiddenException(
+        'You do not have access to this repository',
+      );
+    }
+
+    // Prevent concurrent documentation jobs
+    const activeJob = await this.prisma.documentationJob.findFirst({
+      where: {
+        repositoryId: id,
+        status: {
+          in: [DocumentationJobStatus.PENDING, DocumentationJobStatus.RUNNING],
+        },
+      },
+    });
+
+    if (activeJob) {
+      throw new ConflictException(
+        'A documentation job is already in progress for this repository',
+      );
+    }
+
+    const job = await this.prisma.documentationJob.create({
+      data: {
+        repositoryId: id,
+        status: DocumentationJobStatus.PENDING,
+        stage: 'queued',
+      },
+    });
+
+    // Run in the background
+    this.documentationPipeline.execute(id, job.id, userId).catch((err) => {
+      this.logger.error(`Background documentation job ${job.id} failed: ${err.message}`);
+    });
+
+    return {
+      success: true,
+      message: 'Documentation job started',
+      data: job,
+    };
+  }
+
+  /**
+   * GET /repositories/:id/documentation
+   * Returns the latest documentation job status for polling.
+   */
+  @Get(':id/documentation')
+  async getDocumentationStatus(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const repository = await this.prisma.repository.findFirst({
+      where: { id },
+    });
+
+    if (!repository) {
+      throw new NotFoundException('Repository not found');
+    }
+
+    if (repository.userId !== userId) {
+      throw new ForbiddenException(
+        'You do not have access to this repository',
+      );
+    }
+
+    const job = await this.prisma.documentationJob.findFirst({
+      where: { repositoryId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!job) {
+      throw new NotFoundException(
+        'No documentation job found for this repository',
+      );
+    }
+
+    return {
+      success: true,
+      message: 'Documentation job retrieved successfully',
+      data: job,
+    };
+  }
+
+  /**
+   * POST /repositories/:id/ask
+   * Query the repository documentation using RAG.
+   */
+  @Post(':id/ask')
+  async askQuestion(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AskQuestionDto,
+  ) {
+    const repository = await this.prisma.repository.findFirst({
+      where: { id },
+    });
+
+    if (!repository) {
+      throw new NotFoundException('Repository not found');
+    }
+
+    if (repository.userId !== userId) {
+      throw new ForbiddenException(
+        'You do not have access to this repository',
+      );
+    }
+
+    const result = await this.askService.ask(id, dto.question);
+    return {
+      success: true,
+      message: 'Question answered successfully',
       data: result,
     };
   }
