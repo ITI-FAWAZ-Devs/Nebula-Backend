@@ -4,11 +4,36 @@ import { AnalysisModule } from '../analysis/analysis.module';
 import { RepositoriesController } from './repositories.controller';
 import { RepositoriesService } from './repositories.service';
 import { GithubClientService } from './github-client.service';
+import { WorkspaceModule } from '../workspace/workspace.module';
+import { GitModule } from '../git/git.module';
+import { DiscoveryModule } from '../discovery/discovery.module';
+import { GeminiModule } from '../gemini/gemini.module';
+import { ChromaModule } from '../chroma/chroma.module';
+import { DocumentationPipeline } from './documentation.pipeline';
+import { AskService } from './ask.service';
 
 @Module({
-  imports: [UsersModule, AnalysisModule],
+  imports: [
+    UsersModule,
+    AnalysisModule,
+    WorkspaceModule,
+    GitModule,
+    DiscoveryModule,
+    GeminiModule,
+    ChromaModule,
+  ],
   controllers: [RepositoriesController],
-  providers: [RepositoriesService, GithubClientService],
-  exports: [RepositoriesService, GithubClientService],
+  providers: [
+    RepositoriesService,
+    GithubClientService,
+    DocumentationPipeline,
+    AskService,
+  ],
+  exports: [
+    RepositoriesService,
+    GithubClientService,
+    DocumentationPipeline,
+    AskService,
+  ],
 })
 export class RepositoriesModule {}

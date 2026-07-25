@@ -11,6 +11,8 @@ import redisConfig from './redis.config';
 import workspaceConfig from './workspace.config';
 import graphifyConfig from './graphify.config';
 import neo4jConfig from './neo4j.config';
+import geminiConfig from './gemini.config';
+import chromaConfig from './chroma.config';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import neo4jConfig from './neo4j.config';
         workspaceConfig,
         graphifyConfig,
         neo4jConfig,
+        geminiConfig,
+        chromaConfig,
       ],
       envFilePath: ['.env'],
     }),
