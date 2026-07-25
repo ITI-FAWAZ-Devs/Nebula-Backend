@@ -40,7 +40,11 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- Identify the NestJS module, service, and (where applicable) pipeline class that owns each change.
+- Define executable verification for every endpoint, service, and pipeline behavior.
+- For job work, define BullMQ stage reporting and workspace cleanup on success and failure.
+- For AI-answer work, preserve grounded retrieval and `citations: string[]`.
+- For repository work, verify guard-first access and `repository.userId === currentUser.id` ownership.
 
 ## Project Structure
 

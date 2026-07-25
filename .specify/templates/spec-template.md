@@ -87,6 +87,9 @@
 
 ### Functional Requirements
 
+> When applicable, requirements MUST define citation output for AI answers, job stages and
+> workspace cleanup for asynchronous pipelines, and tenant authorization for repository actions.
+
 - **FR-001**: System MUST [specific capability, e.g., "allow users to create accounts"]
 - **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]
 - **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]

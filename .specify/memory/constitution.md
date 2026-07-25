@@ -1,50 +1,72 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Nebula-Backend Constitution
+<!--
+Sync Impact Report
+- Version change: initial baseline -> 1.0.0
+- Modified principles: template placeholders -> five Nebula-Backend principles.
+- Added sections: Technology & Architecture Constraints; Delivery Requirements.
+- Removed sections: none.
+- Templates requiring updates: updated `.specify/templates/plan-template.md`,
+  `.specify/templates/spec-template.md`, and `.specify/templates/tasks-template.md`.
+- Follow-up TODOs: none.
+-->
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Empirically Verified Implementation (NON-NEGOTIABLE)
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Code is the ultimate source of truth. Every endpoint, service method, and pipeline step
+MUST be genuinely implemented, functional, and empirically verifiable. Dummy fallbacks,
+swallowed exceptions, unverified stubs, and commentary-only assertions are prohibited.
+Each change MUST include executable evidence appropriate to its risk before completion.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### II. Asynchronous Job Queuing & Pipeline Isolation
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+Cloning, discovery, tree-sitter AST parsing, Gemini summarization, ChromaDB indexing, and
+Neo4j graph construction MUST execute asynchronously through BullMQ backed by Redis. Jobs
+MUST report applicable ordered stages: `starting`, `workspace`, `clone`, `discovery`,
+`describe_files`, `embed_descriptions`, `save_chroma` and/or `save_neo4j`, and `done`.
+Every job MUST clean up its workspace on both completion and failure.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### III. Grounded RAG & Citation Transparency
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+AI-generated answers and documentation sections MUST be grounded exclusively in context
+retrieved from ChromaDB or Neo4j. Every Q&A API response MUST include source files as
+`citations: string[]`. Requests without retrievable grounding or citations MUST fail
+explicitly rather than inventing support.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### IV. Clean Modular Architecture & Service Boundaries
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Strict NestJS modules are `AuthModule`, `RepositoriesModule`, `AnalysisModule`, `GitModule`,
+`WorkspaceModule`, `DiscoveryModule`, `GeminiModule`, `ChromaModule`, `GraphifyModule`, and
+`Neo4jModule`. Controllers handle HTTP and DTO validation only; services own business logic;
+pipeline classes own complex orchestration. Cross-module access MUST use explicit exports and
+injected services.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### V. Security, Guard-First & Tenant Isolation
+
+All API endpoints are protected by the global `JwtAuthGuard` unless explicitly annotated with
+`@Public()`. GitHub and Google OAuth tokens MUST be encrypted at rest in PostgreSQL. Every
+repository operation MUST verify `repository.userId === currentUser.id`; an ID alone is never
+authorization.
+
+## Technology & Architecture Constraints
+
+- NestJS 11 with TypeScript and Express.
+- PostgreSQL 18 with Prisma 7 and SQL migrations.
+- Redis 7 with BullMQ; Neo4j for graphify AST entities; ChromaDB for vectors.
+- Gemini 2.5 Flash for descriptions and Q&A; `text-embedding-004` for embeddings.
+- Octokit for GitHub REST access and `simple-git` for local workspace cloning.
+
+## Delivery Requirements
+
+Plans and tasks MUST name each responsible module, service, or pipeline stage. API-answer work
+MUST preserve `citations: string[]`; job work MUST define stage reporting and cleanup; database
+changes MUST include Prisma and PostgreSQL-compatible SQL migration artifacts.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes informal practices. Amendments require a semantic version increment,
+updated date, and Sync Impact Report. Plans, tasks, and reviews MUST verify compliance; any
+exception requires explicit, time-bounded approval before merge.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-07-25 | **Last Amended**: 2026-07-25
