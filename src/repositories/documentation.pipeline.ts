@@ -138,10 +138,6 @@ export class DocumentationPipeline {
           this.logger.error(`Error describing file ${file}: ${(err as Error).message}`);
           descriptions.push(null);
         }
-        // 1 second pause between calls to avoid Gemini rate limits
-        if (i < files.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
       }
 
       const validDescriptions = descriptions.filter(
