@@ -109,9 +109,63 @@ model Repository {
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   analysisJobs      AnalysisJob[]
   documentationJobs DocumentationJob[]
+  generatedDocs     GeneratedDoc[]
 
   @@unique([userId, githubRepoId])
   @@map("repositories")
+}
+
+enum DocStatus {
+  PENDING
+  RETRIEVING
+  GENERATING
+  VERIFYING
+  COMPLETED
+  FAILED
+
+  @@map("doc_status")
+}
+
+model GeneratedDoc {
+  id                String    @id @default(uuid())
+  repositoryId      String
+  version           Int
+  status            DocStatus @default(PENDING)
+  commitSha         String?
+  triggeredByUserId String?
+  model             String
+  verificationScore Float?
+  errorMessage      String?
+  generatedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  repository Repository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  sections    DocSection[]
+
+  @@unique([repositoryId, version])
+  @@index([repositoryId, status])
+  @@map("generated_docs")
+}
+
+model DocSection {
+  id              String   @id @default(uuid())
+  docId           String
+  key             String
+  title           String
+  order           Int
+  contentMd       String
+  sourceFiles     String[]
+  diagramMermaid  String?
+  verified        Boolean  @default(false)
+  verificationNotes String?
+  createdAt       DateTime @default(now())
+
+  doc GeneratedDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@unique([docId, key])
+  @@index([docId, order])
+  @@map("doc_sections")
 }
 
 enum AnalysisJobStatus {
