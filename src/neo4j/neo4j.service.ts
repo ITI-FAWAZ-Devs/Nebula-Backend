@@ -5,12 +5,33 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import neo4j, { Driver, Session } from 'neo4j-driver';
+import neo4j, { Driver, Session, Integer } from 'neo4j-driver';
 import {
   KnowledgeGraph,
   GraphNode,
   GraphRelationship,
 } from '../graph/interfaces/knowledge-graph.interface';
+
+export interface NeighborhoodNode {
+  id: string;
+  filePath: string;
+  labels: string[];
+  properties: Record<string, unknown>;
+}
+
+export interface NeighborhoodEdge {
+  id: string;
+  fromFilePath: string;
+  toFilePath: string;
+  type: string;
+  hopDistance: number;
+}
+
+export interface FileNeighborhoodResult {
+  nodes: NeighborhoodNode[];
+  edges: NeighborhoodEdge[];
+  clusters: Array<{ name: string; filePaths: string[] }>;
+}
 
 @Injectable()
 export class Neo4jService implements OnModuleInit, OnModuleDestroy {
@@ -58,6 +79,113 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Neo4j driver is not initialized');
     }
     return this.driver.session({ database: this.database });
+  }
+
+  async getFileNeighborhood(
+    repositoryId: string,
+    seedPaths: string[],
+    maxHops: number,
+  ): Promise<FileNeighborhoodResult> {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH (start)
+        WHERE start.repositoryId = $repositoryId
+          AND any(key IN ['path', 'sourceFile', 'name']
+              KEYS start[key] AND start[key] IN $seedPaths)
+        OPTIONAL MATCH (start)-[r*1..$maxHops]-(neighbor)
+        WHERE neighbor.repositoryId = $repositoryId
+        UNWIND (CASE WHEN r IS NULL THEN [NULL] ELSE r END) AS relChain
+        WITH start, collect(DISTINCT neighbor) AS allNodes,
+             collect(DISTINCT relChain) AS allRelChains
+        UNWIND allNodes AS node
+        WITH DISTINCT node,
+             [rel IN allRelChains WHERE rel IS NOT NULL | rel] AS chains
+        UNWIND (CASE WHEN chains = [] THEN [NULL] ELSE chains END) AS chain
+        UNWIND (CASE WHEN chain IS NULL THEN [NULL] ELSE chain END) AS rel
+        WITH node, rel,
+             CASE
+               WHEN rel IS NOT NULL
+               THEN reduce(hop = 0, r IN CASE WHEN chain IS NULL THEN [] ELSE chain END | hop + 1)
+               ELSE NULL
+             END AS distance
+        WITH node,
+             collect(DISTINCT {
+               rel: rel,
+               distance: coalesce(
+                 CASE WHEN rel IS NOT NULL THEN
+                   reduce(h = 0, r IN CASE WHEN chain IS NULL THEN [] ELSE chain END | h + 1)
+                 ELSE NULL END,
+                 0
+               )
+             }) AS rels
+        RETURN
+          collect(DISTINCT {
+            id: node.id,
+            filePath: coalesce(node.path, node.sourceFile, node.name),
+            labels: labels(node),
+            properties: properties(node)
+          }) AS nodes,
+          [r IN rels WHERE r.rel IS NOT NULL | {
+            id: r.rel.id,
+            fromFilePath: coalesce(
+              startNode(r.rel).path,
+              startNode(r.rel).sourceFile,
+              startNode(r.rel).name
+            ),
+            toFilePath: coalesce(
+              endNode(r.rel).path,
+              endNode(r.rel).sourceFile,
+              endNode(r.rel).name
+            ),
+            type: type(r.rel),
+            hopDistance: r.distance
+          }] AS edges
+        `,
+        { repositoryId, seedPaths, maxHops: neo4j.int(maxHops) },
+      );
+
+      const nodes: NeighborhoodNode[] = [];
+      const edges: NeighborhoodEdge[] = [];
+      const clusters: Array<{ name: string; filePaths: string[] }> = [];
+
+      if (result.records.length > 0) {
+        const record = result.records[0];
+        const rawNodes = record.get('nodes') as Array<Record<string, unknown>> || [];
+        const rawEdges = record.get('edges') as Array<Record<string, unknown>> || [];
+
+        for (const n of rawNodes) {
+          const fp = n.filePath as string;
+          if (fp) {
+            nodes.push({
+              id: n.id as string,
+              filePath: fp,
+              labels: n.labels as string[],
+              properties: n.properties as Record<string, unknown>,
+            });
+          }
+        }
+
+        for (const e of rawEdges) {
+          const fromFp = e.fromFilePath as string;
+          const toFp = e.toFilePath as string;
+          if (fromFp && toFp) {
+            edges.push({
+              id: e.id as string,
+              fromFilePath: fromFp,
+              toFilePath: toFp,
+              type: e.type as string,
+              hopDistance: (e.hopDistance as Integer).toNumber(),
+            });
+          }
+        }
+      }
+
+      return { nodes, edges, clusters };
+    } finally {
+      await session.close();
+    }
   }
 
   async saveNode(node: GraphNode): Promise<void> {

@@ -1,0 +1,218 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AuthProvider {
+  LOCAL
+  GITHUB
+  GOOGLE
+  GITLAB
+  MICROSOFT
+}
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  password        String?
+  fullName        String?
+  avatar          String?
+  isEmailVerified Boolean  @default(false)
+  refreshToken    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts            Account[]
+  verificationTokens  VerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+  repositories        Repository[]
+
+  @@map("users")
+}
+
+model Account {
+  id               String       @id @default(uuid())
+  userId           String
+  provider         AuthProvider
+  providerId       String
+  providerUsername String?
+  providerAvatar   String?
+  accessToken      String?
+  refreshToken     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@unique([userId, provider])
+  @@map("accounts")
+}
+
+model VerificationToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+enum RepositoryStatus {
+  IMPORTED
+  CLONING
+  INDEXING
+  READY
+  FAILED
+}
+
+model Repository {
+  id                String           @id @default(uuid())
+  githubRepoId      String
+  name              String
+  owner             String
+  defaultBranch     String
+  isPrivate         Boolean          @default(false)
+  cloneUrl          String
+  localPath         String?
+  status            RepositoryStatus @default(IMPORTED)
+  lastIndexedCommit String?
+  lastDocumentedAt  DateTime?
+  documentedCommit  String?
+  userId            String
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysisJobs      AnalysisJob[]
+  documentationJobs DocumentationJob[]
+  generatedDocs     GeneratedDoc[]
+
+  @@unique([userId, githubRepoId])
+  @@map("repositories")
+}
+
+enum DocStatus {
+  PENDING
+  RETRIEVING
+  GENERATING
+  VERIFYING
+  COMPLETED
+  FAILED
+
+  @@map("doc_status")
+}
+
+model GeneratedDoc {
+  id                String    @id @default(uuid())
+  repositoryId      String
+  version           Int
+  status            DocStatus @default(PENDING)
+  commitSha         String?
+  triggeredByUserId String?
+  model             String
+  verificationScore Float?
+  errorMessage      String?
+  generatedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  repository Repository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  sections    DocSection[]
+
+  @@unique([repositoryId, version])
+  @@index([repositoryId, status])
+  @@map("generated_docs")
+}
+
+model DocSection {
+  id              String   @id @default(uuid())
+  docId           String
+  key             String
+  title           String
+  order           Int
+  contentMd       String
+  sourceFiles     String[]
+  diagramMermaid  String?
+  verified        Boolean  @default(false)
+  verificationNotes String?
+  createdAt       DateTime @default(now())
+
+  doc GeneratedDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@unique([docId, key])
+  @@index([docId, order])
+  @@map("doc_sections")
+}
+
+enum AnalysisJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model AnalysisJob {
+  id           String            @id @default(uuid())
+  repositoryId String
+  status       AnalysisJobStatus @default(QUEUED)
+  stage        String?
+  error        String?
+  queueJobId   String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId])
+  @@map("analysis_jobs")
+}
+
+enum DocumentationJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model DocumentationJob {
+  id           String                 @id @default(uuid())
+  repositoryId String
+  status       DocumentationJobStatus @default(PENDING)
+  stage        String?
+  error        String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId])
+  @@map("documentation_jobs")
+}

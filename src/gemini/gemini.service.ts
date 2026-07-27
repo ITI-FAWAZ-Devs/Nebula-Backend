@@ -63,6 +63,23 @@ export class GeminiService {
   }
 
   /**
+   * Generates content using the configured LLM model.
+   */
+  async generateContent(prompt: string): Promise<string> {
+    try {
+      const result = await this.llmModelInstance.generateContent(prompt);
+      const responseText = result.response.text();
+      if (!responseText) {
+        throw new Error('Empty response from Gemini');
+      }
+      return responseText;
+    } catch (error) {
+      this.logger.error(`Failed to generate content: ${(error as Error).message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Embeds a single string and returns its vector.
    */
   async embedString(text: string): Promise<number[]> {

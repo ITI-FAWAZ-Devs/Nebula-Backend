@@ -45,6 +45,11 @@
 			"key": "repositoryId",
 			"value": "",
 			"type": "string"
+		},
+		{
+			"key": "architectureDocId",
+			"value": "",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -482,12 +487,83 @@
 						"description": "GitHub OAuth callback endpoint.\n\n⚠️ This is called automatically by GitHub after authorization. You don't need to call it manually.\n\nThe `code` parameter is provided by GitHub's OAuth redirect."
 					},
 					"response": []
+				},
+				{
+					"name": "Google OAuth (Open in Browser)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/google",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "google"]
+						},
+						"description": "⚠️ **Open this URL in a browser**, not Postman!\n\nInitiates the Google OAuth flow. You'll be redirected to Google to authorize, then redirected back with tokens.\n\nThe callback URL is: `{{baseUrl}}/auth/google/callback`\n\nAfter successful auth, you'll be redirected to the frontend with tokens in the URL query params."
+					},
+					"response": []
+				},
+				{
+					"name": "Google OAuth Callback",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/google/callback?code=GOOGLE_AUTH_CODE",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "google", "callback"],
+							"query": [
+								{
+									"key": "code",
+									"value": "GOOGLE_AUTH_CODE",
+									"description": "Google OAuth authorization code (auto-provided by Google redirect)"
+								}
+							]
+						},
+						"description": "Google OAuth callback endpoint.\n\n⚠️ This is called automatically by Google after authorization. You don't need to call it manually.\n\nThe `code` parameter is provided by Google's OAuth redirect."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Health",
+			"description": "Public health check endpoint",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/",
+							"host": ["{{baseUrl}}"],
+							"path": []
+						},
+						"description": "Public health check endpoint. Returns service status and timestamp."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Service operational', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.status).to.equal('operational');",
+									"    pm.expect(json.service).to.equal('Nebula API');",
+									"});"
+								]
+							}
+						}
+					]
 				}
 			]
 		},
 		{
 			"name": "Repositories",
-			"description": "Endpoints to fetch, import, list, analyze, and delete user repositories.\n\n## Analysis flow\n1. Import a repository (or list imported ones)\n2. Set `repositoryId` collection variable to the imported repo UUID\n3. **Analyze Repository** — starts an async BullMQ job (returns immediately)\n4. **Get Analysis Status** — poll until status is `COMPLETED` or `FAILED`",
+			"description": "Endpoints to fetch, import, list, analyze, document, ask, and delete user repositories.\n\n## Flow\n1. Import a repository (or list imported ones)\n2. Set `repositoryId` collection variable to the imported repo UUID\n3. **Analyze Repository** — graph analysis (Neo4j)\n4. **Document Repository** — file descriptions + embeddings (ChromaDB)\n5. **Ask Question** — RAG queries against documentation\n\n⚠️ Both Analyze AND Document must complete before architecture doc generation works.",
 			"item": [
 				{
 					"name": "Get GitHub Repositories",
@@ -696,6 +772,421 @@
 						"description": "Remove the imported repository metadata row from the database."
 					},
 					"response": []
+				},
+				{
+					"name": "Start Documentation Indexing",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/document",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"repositories",
+								"{{repositoryId}}",
+								"document"
+							]
+						},
+						"description": "Start async documentation indexing for a repository.\n\nPipeline: clone repo → discover files → describe with Gemini → embed → store in ChromaDB.\n\n**Response (200):**\n```json\n{\n  \"id\": \"uuid\",\n  \"status\": \"PENDING\",\n  \"stage\": \"queued\"\n}\n```\n\n⚠️ Required before architecture doc generation. Poll **Get Documentation Status** until `COMPLETED`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Documentation job started', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('id');",
+									"    pm.expect(json.data.status).to.equal('PENDING');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get Documentation Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/documentation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"repositories",
+								"{{repositoryId}}",
+								"documentation"
+							]
+						},
+						"description": "Get the latest documentation job status for polling.\n\n**Job status:** `PENDING` | `RUNNING` | `COMPLETED` | `FAILED`\n\n**Stage examples:** `queued`, `starting`, `workspace`, `clone`, `discovery`, `describe_files`, `embed_descriptions`, `save_chroma`, `done`\n\nOn failure, `error` contains the message."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Documentation status retrieved', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('id');",
+									"    pm.expect(json.data).to.have.property('status');",
+									"    pm.expect(json.data.status).to.be.oneOf([",
+									"        'PENDING','RUNNING','COMPLETED','FAILED'",
+									"    ]);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Ask RAG Question",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"question\": \"What does this project do?\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/ask",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"repositories",
+								"{{repositoryId}}",
+								"ask"
+							]
+						},
+						"description": "Query repository documentation using RAG.\n\n**Body:**\n- `question` (required): Natural language question about the codebase\n\n⚠️ Requires a completed documentation indexing job first."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Answer returned', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.exist;",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+		,
+		{
+			"name": "Architecture Documents",
+			"description": "Repository-scoped architecture document generation, polling, retrieval, history, and regeneration.\n\n## Flow\n1. **Trigger Document** — starts async generation (returns 202 immediately)\n2. **Poll Job Status** — check progress (PENDING → RETRIEVING → GENERATING → VERIFYING → COMPLETED/FAILED)\n3. **Fetch Latest Completed** — get the latest completed document with ordered sections\n4. **List Version History** — see all versions for a repository (newest first)\n5. **Fetch Specific Version** — get a particular version's content\n6. **Regenerate** — create a new version after completion\n\nAll endpoints require a `repositoryId` that is owned by the authenticated user and in `READY` state with a `lastIndexedCommit`.",
+			"item": [
+				{
+					"name": "Trigger Document Generation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"commitSha\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/architecture-doc",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "repositories", "{{repositoryId}}", "architecture-doc"]
+						},
+						"description": "Start architecture document generation for a repository.\n\n**Body (optional):**\n- `commitSha` (optional): Must match the repository's `lastIndexedCommit` or be omitted.\n\n**Response (202):**\n```json\n{\n  \"docId\": \"uuid\",\n  \"jobId\": \"uuid\",\n  \"version\": 1,\n  \"status\": \"PENDING\"\n}\n```\n\nIf an active document is already being generated, returns the same document instead of creating a new one.\n\n⚠️ Requires a `READY` repository with `lastIndexedCommit` populated."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Document triggered (202)', function () {",
+									"    pm.response.to.have.status(202);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('docId');",
+									"    pm.expect(json.data).to.have.property('jobId');",
+									"    pm.expect(json.data.docId).to.equal(json.data.jobId);",
+									"    pm.expect(json.data).to.have.property('version');",
+									"    pm.expect(json.data.status).to.be.oneOf(['PENDING','RETRIEVING','GENERATING','VERIFYING']);",
+									"",
+									"    // Auto-save docId for other requests",
+									"    pm.collectionVariables.set('architectureDocId', json.data.docId);",
+									"    console.log('✅ docId saved: ' + json.data.docId);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Poll Job Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/architecture-doc/jobs/{{architectureDocId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "repositories", "{{repositoryId}}", "architecture-doc", "jobs", "{{architectureDocId}}"]
+						},
+						"description": "Poll the status of a document generation job.\n\n**Status progression:** `PENDING` → `RETRIEVING` → `GENERATING` → `VERIFYING` → `COMPLETED` or `FAILED`\n\n**Response (200):**\n```json\n{\n  \"jobId\": \"uuid\",\n  \"docId\": \"uuid\",\n  \"status\": \"GENERATING\",\n  \"errorMessage\": null\n}\n```\n\nTerminal states: `COMPLETED` (success) or `FAILED` (with `errorMessage`)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Job status retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('jobId');",
+									"    pm.expect(json.data).to.have.property('docId');",
+									"    pm.expect(json.data).to.have.property('status');",
+									"    pm.expect(json.data.status).to.be.oneOf([",
+									"        'PENDING','RETRIEVING','GENERATING','VERIFYING','COMPLETED','FAILED'",
+									"    ]);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Fetch Latest Completed Document",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/architecture-doc",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "repositories", "{{repositoryId}}", "architecture-doc"]
+						},
+						"description": "Fetch the latest COMPLETED architecture document.\n\n**Response (200):**\n```json\n{\n  \"docId\": \"uuid\",\n  \"version\": 3,\n  \"status\": \"COMPLETED\",\n  \"commitSha\": \"abc123\",\n  \"generatedAt\": \"2026-07-26T10:00:00.000Z\",\n  \"verificationScore\": 0.94,\n  \"sections\": [\n    {\n      \"key\": \"overview\",\n      \"title\": \"System Overview\",\n      \"order\": 0,\n      \"contentMd\": \"...\",\n      \"sourceFiles\": [\"src/main.ts\"],\n      \"diagramMermaid\": \"flowchart TD ...\",\n      \"verified\": true,\n      \"verificationNotes\": null\n    }\n  ]\n}\n```\n\nSections are ordered by `order` ascending. Returns 404 if no completed document exists."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Latest document retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('docId');",
+									"    pm.expect(json.data).to.have.property('version');",
+									"    pm.expect(json.data.status).to.equal('COMPLETED');",
+									"    pm.expect(json.data).to.have.property('sections');",
+									"    pm.expect(json.data.sections).to.be.an('array');",
+									"",
+									"    if (json.data.sections.length > 0) {",
+									"        const section = json.data.sections[0];",
+									"        pm.expect(section).to.have.all.keys('key','title','order','contentMd','sourceFiles','diagramMermaid','verified','verificationNotes');",
+									"    }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "List Version History",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/architecture-doc/versions",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "repositories", "{{repositoryId}}", "architecture-doc", "versions"]
+						},
+						"description": "List all architecture document versions for a repository.\n\nReturns versions ordered newest first.\n\n**Response (200):**\n```json\n[\n  {\n    \"docId\": \"uuid\",\n    \"version\": 3,\n    \"status\": \"COMPLETED\",\n    \"generatedAt\": \"2026-07-26T10:00:00.000Z\",\n    \"verificationScore\": 0.94\n  },\n  {\n    \"docId\": \"uuid\",\n    \"version\": 2,\n    \"status\": \"COMPLETED\",\n    \"generatedAt\": \"2026-07-26T09:00:00.000Z\",\n    \"verificationScore\": 0.88\n  }\n]\n```"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Version history retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.be.an('array');",
+									"",
+									"    if (json.data.length > 0) {",
+									"        const first = json.data[0];",
+									"        pm.expect(first).to.have.all.keys('docId','version','status','generatedAt','verificationScore');",
+									"    }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Fetch Specific Version",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/architecture-doc/versions/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "repositories", "{{repositoryId}}", "architecture-doc", "versions", "1"]
+						},
+						"description": "Fetch a specific architecture document version by number.\n\n**Response (200):** Same shape as Fetch Latest Completed Document.\n\nIf the version is not `COMPLETED`, `sections` will be empty (only lifecycle metadata is exposed).\n\nReturns 404 if the version does not exist."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Specific version retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('version');",
+									"    pm.expect(json.data).to.have.property('status');",
+									"    pm.expect(json.data).to.have.property('sections');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Regenerate Document",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"commitSha\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/architecture-doc/regenerate",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "repositories", "{{repositoryId}}", "architecture-doc", "regenerate"]
+						},
+						"description": "Regenerate architecture document — creates a new version.\n\nUses the same request/response shape as Trigger Document Generation. If no work is active, it creates the next version; it never changes an earlier version.\n\n**Response (202):**\n```json\n{\n  \"docId\": \"uuid\",\n  \"jobId\": \"uuid\",\n  \"version\": 4,\n  \"status\": \"PENDING\"\n}\n```"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Regeneration accepted (202)', function () {",
+									"    pm.response.to.have.status(202);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('docId');",
+									"    pm.expect(json.data).to.have.property('version');",
+									"    pm.expect(json.data.status).to.be.oneOf(['PENDING','RETRIEVING','GENERATING','VERIFYING']);",
+									"",
+									"    pm.collectionVariables.set('architectureDocId', json.data.docId);",
+									"    console.log('✅ new docId saved: ' + json.data.docId);",
+									"});"
+								]
+							}
+						}
+					]
 				}
 			]
 		}

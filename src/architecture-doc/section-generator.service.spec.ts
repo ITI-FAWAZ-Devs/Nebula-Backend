@@ -1,0 +1,145 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { SectionGeneratorService } from './section-generator.service';
+import { HybridRetrieverService } from './hybrid-retriever.service';
+import { GeminiService } from '../gemini/gemini.service';
+import { SectionPlan, DraftSection } from './dto/architecture-draft.dto';
+import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
+
+describe('SectionGeneratorService', () => {
+  let service: SectionGeneratorService;
+  let hybridRetriever: HybridRetrieverService;
+  let gemini: GeminiService;
+
+  const mockHybridRetriever = {
+    retrieve: jest.fn(),
+  };
+
+  const mockGemini = {
+    generateContent: jest.fn(),
+  };
+
+  const mockContext: HybridRetrievalContext = {
+    repositoryId: 'repo-123',
+    files: [
+      { filePath: 'src/auth.ts', description: 'Auth module', evidenceSources: ['semantic'], combinedScore: 100 },
+      { filePath: 'src/user.ts', description: 'User module', evidenceSources: ['semantic'], combinedScore: 90 },
+    ],
+    relationships: [],
+    moduleClusters: [],
+    missingSeedPaths: [],
+    sourceStatus: { semantic: 'available', graph: 'available' },
+    noEvidence: false,
+  };
+
+  const mockPlan: SectionPlan = {
+    key: 'auth-module',
+    title: 'Authentication Module',
+    purpose: 'Handles user authentication',
+    retrievalTopic: 'authentication implementation',
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SectionGeneratorService,
+        { provide: HybridRetrieverService, useValue: mockHybridRetriever },
+        { provide: GeminiService, useValue: mockGemini },
+      ],
+    }).compile();
+
+    service = module.get<SectionGeneratorService>(SectionGeneratorService);
+    hybridRetriever = module.get<HybridRetrieverService>(HybridRetrieverService);
+    gemini = module.get<GeminiService>(GeminiService);
+
+    jest.clearAllMocks();
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+
+  describe('generate', () => {
+    const repositoryId = 'repo-123';
+
+    it('should generate content with inline citations', async () => {
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+      mockGemini.generateContent.mockResolvedValue(
+        `## Authentication Module
+
+The authentication module handles user login [src/auth.ts] and user registration [src/user.ts].`,
+      );
+
+      const result = await service.generate(repositoryId, mockPlan);
+
+      expect(result.key).toBe('auth-module');
+      expect(result.title).toBe('Authentication Module');
+      expect(result.contentMd).toContain('[src/auth.ts]');
+      expect(result.contentMd).toContain('[src/user.ts]');
+      expect(result.verdict).toBe('unverified');
+    });
+
+    it('should populate sourceFiles only from evidence paths', async () => {
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+      mockGemini.generateContent.mockResolvedValue(
+        `## Authentication Module
+
+The authentication module handles user login [src/auth.ts] and user registration [src/user.ts].`,
+      );
+
+      const result = await service.generate(repositoryId, mockPlan);
+
+      expect(result.sourceFiles).toContain('src/auth.ts');
+      expect(result.sourceFiles).toContain('src/user.ts');
+      expect(result.sourceFiles).toHaveLength(2);
+    });
+
+    it('should exclude citation paths absent from context', async () => {
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+      mockGemini.generateContent.mockResolvedValue(
+        `## Authentication Module
+
+The authentication module handles user login [src/auth.ts] and uses a library [src/external-lib.ts].`,
+      );
+
+      const result = await service.generate(repositoryId, mockPlan);
+
+      expect(result.sourceFiles).toContain('src/auth.ts');
+      expect(result.sourceFiles).not.toContain('src/external-lib.ts');
+    });
+
+    it('should handle empty focused context', async () => {
+      const emptyContext: HybridRetrievalContext = {
+        ...mockContext,
+        files: [],
+        noEvidence: true,
+      };
+      mockHybridRetriever.retrieve.mockResolvedValue(emptyContext);
+      mockGemini.generateContent.mockResolvedValue(
+        '## Authentication Module\n\nNo evidence available.',
+      );
+
+      const result = await service.generate(repositoryId, mockPlan);
+
+      expect(result.key).toBe('auth-module');
+      expect(result.verdict).toBe('unverified');
+      expect(result.sourceFiles).toHaveLength(0);
+    });
+
+    it('should use provided context when given', async () => {
+      mockGemini.generateContent.mockResolvedValue(
+        '## Authentication Module\n\nHandles auth [src/auth.ts].',
+      );
+
+      const result = await service.generate(repositoryId, mockPlan, mockContext);
+
+      expect(mockHybridRetriever.retrieve).not.toHaveBeenCalled();
+      expect(result.sourceFiles).toContain('src/auth.ts');
+    });
+
+    it('should fail when retrieval fails', async () => {
+      mockHybridRetriever.retrieve.mockRejectedValue(new Error('Retrieval failed'));
+
+      await expect(service.generate(repositoryId, mockPlan)).rejects.toThrow('Retrieval failed');
+    });
+  });
+});

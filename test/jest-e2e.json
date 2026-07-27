@@ -5,5 +5,8 @@
   "testRegex": ".e2e-spec.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
-  }
+  },
+  "transformIgnorePatterns": [
+    "/node_modules/(?!execa|strip-final-newline|npm-run-path|path-key|human-signals|is-stream|mimic-fn|onetime|signal-exit)"
+  ]
 }
