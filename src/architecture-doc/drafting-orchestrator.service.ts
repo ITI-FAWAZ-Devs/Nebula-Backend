@@ -5,8 +5,11 @@ import { SectionGeneratorService } from './section-generator.service';
 import { SectionVerifierService } from './section-verifier.service';
 import { DiagramGeneratorService } from './diagram-generator.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
+import { DocStatus } from '@prisma/client';
 import { DraftRequest, ArchitectureDraft, DraftSection, ArchitectureDiagram } from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
+
+export type DraftProgressReporter = (status: DocStatus) => void | Promise<void>;
 
 /**
  * Phase 2 internal drafting pipeline component.
@@ -27,7 +30,10 @@ export class DraftingOrchestratorService {
     private readonly hybridRetriever: HybridRetrieverService,
   ) {}
 
-  async draft(request: DraftRequest): Promise<ArchitectureDraft> {
+  async draft(
+    request: DraftRequest,
+    onProgress?: DraftProgressReporter,
+  ): Promise<ArchitectureDraft> {
     const { repositoryId } = request;
 
     const repository = await this.prisma.repository.findUnique({
@@ -44,13 +50,29 @@ export class DraftingOrchestratorService {
       );
     }
 
+    this.logger.log(`[${repositoryId}] Starting draft for "${repository.name}"`);
+
+    await onProgress?.('RETRIEVING');
+    this.logger.log(`[${repositoryId}] Retrieving broad context...`);
+
     const broadContext = await this.hybridRetriever.retrieve(repositoryId, {
       topic: 'architecture overview of the repository',
     });
 
+    this.logger.log(
+      `[${repositoryId}] Broad context: ${broadContext.files.length} files, ${broadContext.relationships.length} relationships, ${broadContext.moduleClusters.length} clusters, noEvidence=${broadContext.noEvidence}`,
+    );
+
+    this.logger.log(`[${repositoryId}] Planning sections...`);
     const sectionPlan = await this.structurePlanner.plan(repositoryId);
 
+    this.logger.log(`[${repositoryId}] Section plan: ${sectionPlan.length} sections planned`);
+    sectionPlan.forEach((p) => {
+      this.logger.log(`[${repositoryId}]   - ${p.key}: "${p.title}" (topic: ${p.retrievalTopic})`);
+    });
+
     if (sectionPlan.length === 0) {
+      this.logger.warn(`[${repositoryId}] No sections planned — returning empty draft`);
       return {
         repositoryId,
         repositoryName: repository.name,
@@ -66,7 +88,14 @@ export class DraftingOrchestratorService {
     const allRelationships = [...broadContext.relationships];
     const allClusters = [...broadContext.moduleClusters];
 
-    for (const plan of sectionPlan) {
+    await onProgress?.('GENERATING');
+
+    let verificationStarted = false;
+    for (let i = 0; i < sectionPlan.length; i++) {
+      const plan = sectionPlan[i];
+      this.logger.log(
+        `[${repositoryId}] Generating section ${i + 1}/${sectionPlan.length}: ${plan.key}`,
+      );
       try {
         const context = await this.hybridRetriever.retrieve(repositoryId, {
           topic: plan.retrievalTopic,
@@ -75,11 +104,24 @@ export class DraftingOrchestratorService {
         allRelationships.push(...context.relationships);
         allClusters.push(...context.moduleClusters);
 
+        this.logger.log(
+          `[${repositoryId}] Retrieved ${context.files.length} files for "${plan.key}"`,
+        );
+
         const generated = await this.sectionGenerator.generate(
           repositoryId,
           plan,
           context,
         );
+
+        this.logger.log(
+          `[${repositoryId}] Generated "${plan.key}": verdict=${generated.verdict}, contentLength=${generated.contentMd.length}, citations=${generated.sourceFiles.length}`,
+        );
+
+        if (!verificationStarted) {
+          verificationStarted = true;
+          await onProgress?.('VERIFYING');
+        }
 
         const verified = await this.sectionVerifier.verify(
           generated,
@@ -87,10 +129,15 @@ export class DraftingOrchestratorService {
           repositoryId,
         );
 
+        this.logger.log(
+          `[${repositoryId}] Verified "${plan.key}": verdict=${verified.verdict}, notes=${verified.verificationNotes ?? 'null'}`,
+        );
+
         sections.push(verified);
       } catch (error) {
         this.logger.error(
-          `Failed to process section ${plan.key}: ${(error as Error).message}`,
+          `[${repositoryId}] Failed to process section ${plan.key}: ${(error as Error).message}`,
+          (error as Error).stack,
         );
         sections.push({
           key: plan.key,
@@ -103,6 +150,7 @@ export class DraftingOrchestratorService {
       }
     }
 
+    this.logger.log(`[${repositoryId}] Generating diagram...`);
     let diagram: ArchitectureDiagram | null = null;
     try {
       diagram = await this.diagramGenerator.generate(
@@ -110,11 +158,19 @@ export class DraftingOrchestratorService {
         allClusters,
         sections,
       );
+      this.logger.log(
+        `[${repositoryId}] Diagram: ${diagram ? `present (${diagram.mermaidSource.length} chars, modules=${diagram.modules.length})` : 'null'}`,
+      );
     } catch (error) {
       this.logger.error(
-        `Failed to generate diagram: ${(error as Error).message}`,
+        `[${repositoryId}] Failed to generate diagram: ${(error as Error).message}`,
+        (error as Error).stack,
       );
     }
+
+    this.logger.log(
+      `[${repositoryId}] Draft complete: ${sections.length} sections, diagram=${diagram ? 'yes' : 'no'}`,
+    );
 
     return {
       repositoryId,

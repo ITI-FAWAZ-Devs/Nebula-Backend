@@ -219,5 +219,34 @@ describe('DraftingOrchestratorService', () => {
 
       await expect(service.draft({ repositoryId })).rejects.toThrow();
     });
+
+    it('should report retrieval, generation, and verification progress while preserving draft output', async () => {
+      mockPrisma.repository.findUnique.mockResolvedValue({
+        id: repositoryId,
+        name: 'test-repo',
+        status: 'READY',
+      });
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+      mockStructurePlanner.plan.mockResolvedValue(mockPlan);
+      mockSectionGenerator.generate.mockResolvedValue(mockSection);
+      mockSectionVerifier.verify.mockResolvedValue(mockSection);
+      mockDiagramGenerator.generate.mockResolvedValue({
+        mermaidSource: 'flowchart TD\n    A --> B',
+        modules: ['Auth Module'],
+        verdict: 'verified',
+        verificationNotes: null,
+      });
+
+      const progressStatuses: string[] = [];
+      const result = await service.draft({ repositoryId }, (status) => {
+        progressStatuses.push(status);
+      });
+
+      expect(progressStatuses).toEqual(['RETRIEVING', 'GENERATING', 'VERIFYING']);
+      expect(result.repositoryId).toBe(repositoryId);
+      expect(result.sections).toHaveLength(1);
+      expect(result.sections[0].verdict).toBe('verified');
+      expect(result.diagram).not.toBeNull();
+    });
   });
 });
