@@ -33,6 +33,33 @@ export interface FileNeighborhoodResult {
   clusters: Array<{ name: string; filePaths: string[] }>;
 }
 
+/**
+ * Result shape for the frozen agent graph tools (Phase 0 contract).
+ * Every graph tool returns this shape and maps 1:1 to a RetrievalHit later.
+ */
+export interface GraphToolNode {
+  id: string;
+  labels: string[];
+  name: string;
+  filePath: string | null;
+  sourceLocation: string | null;
+  properties: Record<string, unknown>;
+}
+
+const GRAPH_TOOL_MAX_HOPS = 2;
+const GRAPH_TOOL_MAX_NODES_PER_HOP = 25;
+
+function toGraphToolNode(raw: Record<string, unknown>): GraphToolNode {
+  return {
+    id: raw.id as string,
+    labels: (raw.labels as string[]) || [],
+    name: (raw.name as string) || '',
+    filePath: (raw.filePath as string) || null,
+    sourceLocation: (raw.sourceLocation as string) || null,
+    properties: (raw.properties as Record<string, unknown>) || {},
+  };
+}
+
 @Injectable()
 export class Neo4jService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(Neo4jService.name);
@@ -295,6 +322,182 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
         `Failed to save graph: ${(error as Error).message}`,
       );
       throw error;
+    } finally {
+      await session.close();
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Frozen agent graph tools (Phase 0 contract). All Cypher is parameterized
+  // and written here — never templated from LLM output.
+  // ---------------------------------------------------------------------
+
+  private readonly nodeProjection = `{
+    id: n.id,
+    labels: labels(n),
+    name: n.name,
+    filePath: coalesce(n.path, n.sourceFile, n.name),
+    sourceLocation: n.sourceLocation,
+    properties: properties(n)
+  }`;
+
+  private projectNode(varName: string): string {
+    return `{
+      id: ${varName}.id,
+      labels: labels(${varName}),
+      name: ${varName}.name,
+      filePath: coalesce(${varName}.path, ${varName}.sourceFile, ${varName}.name),
+      sourceLocation: ${varName}.sourceLocation,
+      properties: properties(${varName})
+    }`;
+  }
+
+  /**
+   * getDefinition — resolves a single node by id, or by (name, type) when id is unknown.
+   */
+  async getDefinition(
+    repositoryId: string,
+    params: { nodeId?: string; name?: string; type?: string },
+  ): Promise<GraphToolNode | null> {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH (n {repositoryId: $repositoryId})
+        WHERE ($nodeId IS NOT NULL AND n.id = $nodeId)
+           OR ($nodeId IS NULL AND $name IS NOT NULL AND n.name = $name
+               AND ($type IS NULL OR $type IN labels(n)))
+        RETURN ${this.nodeProjection} AS node
+        LIMIT 1
+        `,
+        {
+          repositoryId,
+          nodeId: params.nodeId ?? null,
+          name: params.name ?? null,
+          type: params.type ?? null,
+        },
+      );
+      if (result.records.length === 0) return null;
+      return toGraphToolNode(result.records[0].get('node'));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * getCallers — nodes with a CALLS edge into the target (1 hop, capped).
+   */
+  async getCallers(repositoryId: string, nodeId: string): Promise<GraphToolNode[]> {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH (caller)-[:CALLS]->(target {repositoryId: $repositoryId, id: $nodeId})
+        WHERE caller.repositoryId = $repositoryId
+        RETURN DISTINCT ${this.projectNode('caller')} AS node
+        LIMIT $limit
+        `,
+        { repositoryId, nodeId, limit: neo4j.int(GRAPH_TOOL_MAX_NODES_PER_HOP) },
+      );
+      return result.records.map((r) => toGraphToolNode(r.get('node')));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * getCallees — nodes the source has a CALLS edge to (1 hop, capped).
+   */
+  async getCallees(repositoryId: string, nodeId: string): Promise<GraphToolNode[]> {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH (source {repositoryId: $repositoryId, id: $nodeId})-[:CALLS]->(callee)
+        WHERE callee.repositoryId = $repositoryId
+        RETURN DISTINCT ${this.projectNode('callee')} AS node
+        LIMIT $limit
+        `,
+        { repositoryId, nodeId, limit: neo4j.int(GRAPH_TOOL_MAX_NODES_PER_HOP) },
+      );
+      return result.records.map((r) => toGraphToolNode(r.get('node')));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * getImplementations — both directions of IMPLEMENTS/EXTENDS around the node,
+   * up to 2 hops.
+   */
+  async getImplementations(repositoryId: string, nodeId: string): Promise<GraphToolNode[]> {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH (n {repositoryId: $repositoryId, id: $nodeId})
+        MATCH path = (n)-[:IMPLEMENTS|EXTENDS*1..${GRAPH_TOOL_MAX_HOPS}]-(related)
+        WHERE related.repositoryId = $repositoryId
+        RETURN DISTINCT ${this.projectNode('related')} AS node
+        LIMIT $limit
+        `,
+        { repositoryId, nodeId, limit: neo4j.int(GRAPH_TOOL_MAX_NODES_PER_HOP) },
+      );
+      return result.records.map((r) => toGraphToolNode(r.get('node')));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * getFileContext — a File node's direct children (CONTAINS / HAS_METHOD) plus
+   * same-file symbols, 1 hop, capped at 40.
+   */
+  async getFileContext(repositoryId: string, filePath: string): Promise<GraphToolNode[]> {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH (f {repositoryId: $repositoryId})
+        WHERE f.path = $filePath OR f.sourceFile = $filePath
+        OPTIONAL MATCH (f)-[:CONTAINS|HAS_METHOD]->(child)
+        WHERE child.repositoryId = $repositoryId
+        WITH f, collect(DISTINCT child) AS children
+        UNWIND (CASE WHEN children = [] THEN [f] ELSE children + [f] END) AS n
+        RETURN DISTINCT ${this.nodeProjection} AS node
+        LIMIT $limit
+        `,
+        { repositoryId, filePath, limit: neo4j.int(40) },
+      );
+      return result.records.map((r) => toGraphToolNode(r.get('node')));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * getModuleOverview — ego neighborhood of a Directory/File over
+   * CONTAINS|IMPORTS|DEPENDS_ON, up to 2 hops, capped per hop.
+   */
+  async getModuleOverview(repositoryId: string, filePath: string): Promise<GraphToolNode[]> {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH (start {repositoryId: $repositoryId})
+        WHERE start.path = $filePath OR start.sourceFile = $filePath OR start.name = $filePath
+        MATCH (start)-[:CONTAINS|IMPORTS|DEPENDS_ON*1..${GRAPH_TOOL_MAX_HOPS}]-(n)
+        WHERE n.repositoryId = $repositoryId
+        RETURN DISTINCT ${this.nodeProjection} AS node
+        LIMIT $limit
+        `,
+        {
+          repositoryId,
+          filePath,
+          limit: neo4j.int(GRAPH_TOOL_MAX_NODES_PER_HOP * GRAPH_TOOL_MAX_HOPS),
+        },
+      );
+      return result.records.map((r) => toGraphToolNode(r.get('node')));
     } finally {
       await session.close();
     }
