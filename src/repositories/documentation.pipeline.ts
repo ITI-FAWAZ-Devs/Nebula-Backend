@@ -160,6 +160,7 @@ export class DocumentationPipeline {
       // Map to Chroma chunks
       const chunks = validDescriptions.map((d, index) => {
         const fileLanguage = this.getLanguageFromExtension(d.file);
+        const modulePath = this.getModulePath(d.file);
         return {
           id: `${repositoryId}:${d.file}`,
           document: d.description,
@@ -167,6 +168,7 @@ export class DocumentationPipeline {
             repositoryId,
             userId: repository.userId,
             filePath: d.file,
+            modulePath,
             language: fileLanguage,
             commitHash: commitHash || 'unknown',
           },
@@ -314,6 +316,15 @@ export class DocumentationPipeline {
     }
 
     return files;
+  }
+
+  /**
+   * Extracts the module (directory) path from a file path.
+   */
+  private getModulePath(filePath: string): string {
+    const normalized = filePath.replace(/\\/g, '/');
+    const lastSlash = normalized.lastIndexOf('/');
+    return lastSlash > 0 ? normalized.substring(0, lastSlash) : '/';
   }
 
   /**

@@ -146,6 +146,18 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
         { repositoryId, seedPaths, maxHops: neo4j.int(maxHops) },
       );
 
+      // Query module clusters separately
+      const clusterResult = await session.run(
+        `
+        MATCH (m:Module {repositoryId: $repositoryId})-[:CONTAINS]->(f:File)
+        WHERE f.repositoryId = $repositoryId
+        WITH m, collect(DISTINCT f) AS files
+        RETURN m.name AS name,
+               [file IN files | coalesce(file.path, file.sourceFile, file.name)] AS filePaths
+        `,
+        { repositoryId },
+      );
+
       const nodes: NeighborhoodNode[] = [];
       const edges: NeighborhoodEdge[] = [];
       const clusters: Array<{ name: string; filePaths: string[] }> = [];
@@ -182,7 +194,28 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
+      // Populate module clusters from cluster query
+      for (const record of clusterResult.records) {
+        const name = record.get('name') as string;
+        const filePaths = record.get('filePaths') as string[];
+        if (name && filePaths && filePaths.length > 0) {
+          clusters.push({ name, filePaths });
+        }
+      }
+
       return { nodes, edges, clusters };
+    } finally {
+      await session.close();
+    }
+  }
+
+  async runQuery(
+    cypher: string,
+    params?: Record<string, unknown>,
+  ) {
+    const session = this.getSession();
+    try {
+      return await session.run(cypher, params);
     } finally {
       await session.close();
     }

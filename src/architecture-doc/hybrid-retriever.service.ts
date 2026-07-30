@@ -18,6 +18,9 @@ interface ChromaRecord {
   filePath: string;
   description?: string;
   distance: number;
+  modulePath?: string;
+  graphNodeId?: string;
+  moduleGraphNodeId?: string;
 }
 
 /**
@@ -209,6 +212,9 @@ export class HybridRetrieverService {
         filePath,
         description: (meta.description as string) || undefined,
         distance: distances[i] as number,
+        modulePath: (meta.modulePath as string) || undefined,
+        graphNodeId: (meta.graphNodeId as string) || undefined,
+        moduleGraphNodeId: (meta.moduleGraphNodeId as string) || undefined,
       });
     }
 
@@ -245,6 +251,9 @@ export class HybridRetrieverService {
         semanticRank: rank,
         evidenceSources: ['semantic'],
         combinedScore: this.computeScore(rank, true, false, 0),
+        modulePath: rec.modulePath,
+        graphNodeId: rec.graphNodeId,
+        moduleGraphNodeId: rec.moduleGraphNodeId,
       });
     }
 

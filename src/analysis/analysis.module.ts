@@ -10,6 +10,8 @@ import { DiscoveryModule } from '../discovery/discovery.module';
 import { GraphifyModule } from '../graphify/graphify.module';
 import { GraphModule } from '../graph/graph.module';
 import { Neo4jModule } from '../neo4j/neo4j.module';
+import { ChromaModule } from '../chroma/chroma.module';
+import { GraphLinkService } from './graph-link.service';
 
 @Module({
   imports: [
@@ -22,8 +24,9 @@ import { Neo4jModule } from '../neo4j/neo4j.module';
     GraphifyModule,
     GraphModule,
     Neo4jModule,
+    ChromaModule,
   ],
-  providers: [AnalysisService, AnalysisPipeline, AnalysisProcessor],
+  providers: [AnalysisService, AnalysisPipeline, AnalysisProcessor, GraphLinkService],
   exports: [AnalysisService],
 })
 export class AnalysisModule {}

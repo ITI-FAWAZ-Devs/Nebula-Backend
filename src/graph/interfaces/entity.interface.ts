@@ -1,6 +1,6 @@
 export type EntityType =
   | 'Repository'
-  | 'Directory'
+  | 'Module'
   | 'File'
   | 'Class'
   | 'Interface'

@@ -12,6 +12,7 @@ import { GraphifyService } from '../graphify/graphify.service';
 import { GraphNormalizerService } from '../graph/graph-normalizer.service';
 import { GraphBuilderService } from '../graph/graph-builder.service';
 import { Neo4jService } from '../neo4j/neo4j.service';
+import { GraphLinkService } from './graph-link.service';
 
 @Injectable()
 export class AnalysisPipeline {
@@ -26,6 +27,7 @@ export class AnalysisPipeline {
     private readonly normalizer: GraphNormalizerService,
     private readonly graphBuilder: GraphBuilderService,
     private readonly neo4j: Neo4jService,
+    private readonly graphLink: GraphLinkService,
   ) {}
 
   async execute(
@@ -102,6 +104,20 @@ export class AnalysisPipeline {
       // 7. Save to Neo4j
       await this.setStage(analysisJobId, repositoryId, 'save_neo4j', null);
       await this.neo4j.saveGraph(graph);
+
+      // 8. Link Chroma embeddings to Neo4j graph nodes
+      await this.setStage(analysisJobId, repositoryId, 'link_embeddings', null);
+      try {
+        const collectionName = `repo-${repositoryId}`;
+        await this.graphLink.linkEmbeddingsToGraphNodes(
+          repositoryId,
+          collectionName,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to link embeddings to graph nodes: ${(error as Error).message}`,
+        );
+      }
 
       // Mark complete
       await this.prisma.repository.update({

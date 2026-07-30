@@ -85,6 +85,26 @@ export class ChromaService {
   }
 
   /**
+   * Retrieves all entries from a collection, optionally filtered by IDs or metadata.
+   */
+  async getCollectionEntries(
+    collectionName: string,
+    where?: Record<string, any>,
+  ) {
+    try {
+      const collection = await this.getOrCreateCollection(collectionName);
+      this.logger.log(`Getting entries from collection ${collectionName}`);
+      const result = await collection.get({ where });
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get entries from collection ${collectionName}: ${(error as Error).message}`,
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Performs a similarity query (top-K results) in the collection using the query embedding.
    */
   async queryCollection(collectionName: string, queryEmbedding: number[], limit = 5) {
