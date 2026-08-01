@@ -13,6 +13,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { RequireGithubToken } from '../integrations/decorators/require-github-token.decorator';
 import { RepositoriesService } from './repositories.service';
 import { GithubClientService } from './github-client.service';
 import { AnalysisService } from '../analysis/analysis.service';
@@ -42,6 +43,7 @@ export class RepositoriesController {
    * Lists the user's GitHub repositories (fetched live from GitHub, with caching and pagination).
    */
   @Get('github')
+  @RequireGithubToken()
   async listGithubRepos(
     @CurrentUser('id') userId: string,
     @Query() query: GithubRepoQueryDto,
@@ -87,6 +89,7 @@ export class RepositoriesController {
    * Imports a selected GitHub repository into the database.
    */
   @Post('import')
+  @RequireGithubToken()
   async importRepo(
     @CurrentUser('id') userId: string,
     @Body() dto: ImportRepoDto,

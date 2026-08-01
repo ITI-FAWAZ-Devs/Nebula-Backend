@@ -99,4 +99,34 @@ export class MailService {
       );
     }
   }
+
+  async sendOrgInviteEmail(
+    email: string,
+    inviterName: string,
+    orgName: string,
+    inviteToken: string,
+  ): Promise<void> {
+    const acceptUrl = `${this.frontendUrl}/organizations/invite?token=${inviteToken}`;
+
+    const html = this.loadTemplate('org-invite', {
+      inviterName,
+      orgName,
+      acceptUrl,
+    });
+
+    try {
+      await this.transporter.sendMail({
+        from: this.fromAddress,
+        to: email,
+        subject: `You've been invited to join ${orgName} on Nebula`,
+        html,
+      });
+      this.logger.log(`Organization invite email sent to ${email}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send organization invite email to ${email}`,
+        error,
+      );
+    }
+  }
 }

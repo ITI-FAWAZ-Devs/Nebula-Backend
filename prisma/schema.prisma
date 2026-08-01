@@ -30,6 +30,9 @@ model User {
   verificationTokens  VerificationToken[]
   passwordResetTokens PasswordResetToken[]
   repositories        Repository[]
+  githubToken         UserGithubToken?
+  ownedOrganizations  Organization[]
+  memberships         OrganizationMember[]
 
   @@map("users")
 }
@@ -81,6 +84,75 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+model UserGithubToken {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  encryptedToken  String
+  scopes          String[]
+  lastValidatedAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_github_tokens")
+}
+
+enum MemberStatus {
+  PENDING
+  ACTIVE
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner        User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  roles        Role[]
+  members      OrganizationMember[]
+  repositories Repository[]
+
+  @@map("organizations")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  orgId       String
+  name        String
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization Organization         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members      OrganizationMember[]
+
+  @@unique([orgId, name])
+  @@map("roles")
+}
+
+model OrganizationMember {
+  id          String       @id @default(uuid())
+  orgId       String
+  userId      String
+  roleId      String
+  status      MemberStatus @default(PENDING)
+  inviteToken String?      @unique
+  invitedBy   String?
+  joinedAt    DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@map("organization_members")
+}
+
 enum RepositoryStatus {
   IMPORTED
   CLONING
@@ -103,15 +175,17 @@ model Repository {
   lastDocumentedAt  DateTime?
   documentedCommit  String?
   userId            String
+  organizationId    String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization      Organization?      @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   analysisJobs      AnalysisJob[]
   documentationJobs DocumentationJob[]
   generatedDocs     GeneratedDoc[]
 
-  @@unique([userId, githubRepoId])
+  @@unique([userId, organizationId, githubRepoId])
   @@map("repositories")
 }
 
