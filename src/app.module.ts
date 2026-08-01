@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module';
 import { MailModule } from './mail/mail.module';
 import { RepositoriesModule } from './repositories/repositories.module';
 import { AnalysisModule } from './analysis/analysis.module';
+import { ArchitectureDocModule } from './architecture-doc/architecture-doc.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -39,6 +40,7 @@ import { AppService } from './app.service';
     MailModule,
     RepositoriesModule,
     AnalysisModule,
+    ArchitectureDocModule,
   ],
   controllers: [AppController],
   providers: [
