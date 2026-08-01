@@ -12,6 +12,8 @@ import { MailModule } from './mail/mail.module';
 import { RepositoriesModule } from './repositories/repositories.module';
 import { AnalysisModule } from './analysis/analysis.module';
 import { ArchitectureDocModule } from './architecture-doc/architecture-doc.module';
+import { IntegrationsModule } from './integrations/integrations.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { AgentRagModule } from './agent-rag/agent-rag.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
@@ -44,6 +46,8 @@ import { AppService } from './app.service';
     RepositoriesModule,
     AnalysisModule,
     ArchitectureDocModule,
+    IntegrationsModule,
+    OrganizationsModule,
     AgentRagModule,
   ],
   controllers: [AppController],

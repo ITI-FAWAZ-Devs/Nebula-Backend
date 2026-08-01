@@ -2,26 +2,45 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { RepositoryStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ImportRepoDto } from './dto/import-repo.dto';
+import { OrganizationsService } from '../organizations/organizations.service';
 
 @Injectable()
 export class RepositoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly organizationsService: OrganizationsService,
+  ) {}
 
   /**
    * Imports a repository by selecting it from GitHub and saving it to the database.
+   * Supports optional organizationId for org-scoped repos.
    */
   async importRepository(userId: string, dto: ImportRepoDto) {
-    // 1. Check duplicate at application level
-    const existing = await this.prisma.repository.findUnique({
-      where: {
-        userId_githubRepoId: {
+    // If org-scoped, verify the user has repo:import permission
+    if (dto.organizationId) {
+      const permissions =
+        await this.organizationsService.getMemberPermissions(
           userId,
-          githubRepoId: dto.githubRepoId,
-        },
+          dto.organizationId,
+        );
+      if (!permissions || !permissions.includes('repo:import')) {
+        throw new ForbiddenException(
+          'You do not have permission to import repositories in this organization',
+        );
+      }
+    }
+
+    // 1. Check duplicate at application level
+    const existing = await this.prisma.repository.findFirst({
+      where: {
+        userId,
+        organizationId: dto.organizationId ?? null,
+        githubRepoId: dto.githubRepoId,
       },
     });
 
@@ -34,6 +53,7 @@ export class RepositoriesService {
       return await this.prisma.repository.create({
         data: {
           userId,
+          organizationId: dto.organizationId ?? null,
           githubRepoId: dto.githubRepoId,
           name: dto.name,
           owner: dto.owner,
@@ -56,26 +76,59 @@ export class RepositoriesService {
 
   /**
    * Lists all repositories imported in Nebula for a specific user.
+   * If organizationId is provided, returns org-scoped repos.
+   * Otherwise, returns only personal repos (organizationId IS NULL).
    */
-  async listImported(userId: string) {
+  async listImported(userId: string, organizationId?: string) {
+    if (organizationId) {
+      // For org repos, verify membership
+      const isMember = await this.organizationsService.isMember(
+        userId,
+        organizationId,
+      );
+      if (!isMember) {
+        throw new ForbiddenException(
+          'You are not a member of this organization',
+        );
+      }
+      return this.prisma.repository.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    // Personal repos only
     return this.prisma.repository.findMany({
-      where: { userId },
+      where: { userId, organizationId: null },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   /**
    * Retrieves detail metadata for a single imported repository.
+   * Verifies access via userId (personal) or org membership.
    */
   async getImportedById(userId: string, id: string) {
-    const repo = await this.prisma.repository.findFirst({
-      where: {
-        id,
-        userId,
-      },
+    const repo = await this.prisma.repository.findUnique({
+      where: { id },
     });
 
     if (!repo) {
+      throw new NotFoundException('Imported repository not found');
+    }
+
+    // Check access: personal repo or org member
+    if (repo.organizationId) {
+      const isMember = await this.organizationsService.isMember(
+        userId,
+        repo.organizationId,
+      );
+      if (!isMember) {
+        throw new ForbiddenException(
+          'You do not have access to this repository',
+        );
+      }
+    } else if (repo.userId !== userId) {
       throw new NotFoundException('Imported repository not found');
     }
 
@@ -86,14 +139,27 @@ export class RepositoriesService {
    * Removes an imported repository from the database.
    */
   async deleteImported(userId: string, id: string) {
-    const existing = await this.prisma.repository.findFirst({
-      where: {
-        id,
-        userId,
-      },
+    const repo = await this.prisma.repository.findUnique({
+      where: { id },
     });
 
-    if (!existing) {
+    if (!repo) {
+      throw new NotFoundException('Imported repository not found');
+    }
+
+    // Check access: personal repo owner or org member with permissions
+    if (repo.organizationId) {
+      const permissions =
+        await this.organizationsService.getMemberPermissions(
+          userId,
+          repo.organizationId,
+        );
+      if (!permissions) {
+        throw new ForbiddenException(
+          'You do not have access to this repository',
+        );
+      }
+    } else if (repo.userId !== userId) {
       throw new NotFoundException('Imported repository not found');
     }
 
@@ -104,3 +170,4 @@ export class RepositoriesService {
     return { id };
   }
 }
+
