@@ -5,6 +5,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { ConfigModule } from './config/config.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { MailModule } from './mail/mail.module';
@@ -13,6 +14,7 @@ import { AnalysisModule } from './analysis/analysis.module';
 import { ArchitectureDocModule } from './architecture-doc/architecture-doc.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { AgentRagModule } from './agent-rag/agent-rag.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -21,6 +23,7 @@ import { AppService } from './app.service';
   imports: [
     ConfigModule,
     PrismaModule,
+    RedisModule,
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
@@ -45,6 +48,7 @@ import { AppService } from './app.service';
     ArchitectureDocModule,
     IntegrationsModule,
     OrganizationsModule,
+    AgentRagModule,
   ],
   controllers: [AppController],
   providers: [

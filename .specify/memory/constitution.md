@@ -54,7 +54,7 @@ authorization.
 - NestJS 11 with TypeScript and Express.
 - PostgreSQL 18 with Prisma 7 and SQL migrations.
 - Redis 7 with BullMQ; Neo4j for graphify AST entities; ChromaDB for vectors.
-- Gemini 2.5 Flash for descriptions and Q&A; `text-embedding-004` for embeddings.
+- Gemini 2.5 Flash for descriptions and Q&A; `gemini-embedding-001` for embeddings.
 - Octokit for GitHub REST access and `simple-git` for local workspace cloning.
 
 ## Delivery Requirements
