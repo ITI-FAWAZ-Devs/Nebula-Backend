@@ -115,11 +115,14 @@ export class ChromaService {
 
   /**
    * Performs a similarity query (top-K results) in the collection using the query embedding.
+   * `where` narrows scope by metadata (e.g. filePath, language, repositoryId) instead of
+   * relying purely on raw top-k similarity.
    */
   async queryCollection(
     collectionName: string,
     queryEmbedding: number[],
     limit = 5,
+    where?: Record<string, string | number | boolean>,
   ) {
     try {
       const collection = await this.getOrCreateCollection(collectionName);
@@ -129,7 +132,10 @@ export class ChromaService {
       const result = await collection.query({
         queryEmbeddings: [queryEmbedding],
         nResults: limit,
-      });
+        ...(where && Object.keys(where).length > 0
+          ? { where: where as Record<string, string | number | boolean> }
+          : {}),
+      } as Parameters<typeof collection.query>[0]);
 
       return result;
     } catch (error) {

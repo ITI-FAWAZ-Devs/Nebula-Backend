@@ -4,6 +4,7 @@ import { ArchitectureDocProcessor } from './architecture-doc.processor';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProgressEventsService } from '../progress/progress-events.service';
 import { DraftingOrchestratorService } from './drafting-orchestrator.service';
+import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.service';
 import { ArchitectureDraft } from './dto/architecture-draft.dto';
 
 describe('ArchitectureDocProcessor', () => {
@@ -12,6 +13,10 @@ describe('ArchitectureDocProcessor', () => {
   const documentId = 'doc-1';
   const repositoryId = 'repo-1';
   const userId = 'user-1';
+
+  const mockEmbedder = {
+    embedDocument: jest.fn().mockResolvedValue(undefined),
+  };
 
   const mockDraft: ArchitectureDraft = {
     repositoryId,
@@ -56,7 +61,7 @@ describe('ArchitectureDocProcessor', () => {
   const mockPrisma = {
     generatedDoc: {
       findUnique: jest.fn(),
-      update: jest.fn(),
+      update: jest.fn().mockResolvedValue({ version: 1, commitSha: 'sha-1' }),
     },
     docSection: {
       createMany: jest.fn(),

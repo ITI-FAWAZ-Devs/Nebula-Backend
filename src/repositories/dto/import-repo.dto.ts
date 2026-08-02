@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsString, IsUrl } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUrl, IsUUID } from 'class-validator';
 
 export class ImportRepoDto {
   @IsString()
@@ -23,4 +23,9 @@ export class ImportRepoDto {
   @IsUrl()
   @IsNotEmpty()
   cloneUrl: string;
+
+  @IsOptional()
+  @IsUUID()
+  organizationId?: string;
 }
+

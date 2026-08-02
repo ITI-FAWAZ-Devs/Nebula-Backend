@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { UsersModule } from '../users/users.module';
 import { AnalysisModule } from '../analysis/analysis.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { RepositoriesController } from './repositories.controller';
 import { RepositoriesService } from './repositories.service';
 import { GithubClientService } from './github-client.service';
@@ -17,6 +19,8 @@ import { AskService } from './ask.service';
   imports: [
     UsersModule,
     AnalysisModule,
+    IntegrationsModule,
+    OrganizationsModule,
     WorkspaceModule,
     GitModule,
     DiscoveryModule,

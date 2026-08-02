@@ -356,7 +356,7 @@ export class ArchitectureDocService {
     repository: { lastIndexedCommit: string | null },
     commitSha?: string,
   ): void {
-    if (commitSha === undefined || commitSha === null) {
+    if (!commitSha) {
       return;
     }
 

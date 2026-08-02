@@ -9,6 +9,7 @@ import {
   ArchitectureDraftJobPayload,
 } from './architecture-doc.constants';
 import { DraftingOrchestratorService } from './drafting-orchestrator.service';
+import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.service';
 
 const STATUS_ORDER: DocStatus[] = [
   DocStatus.PENDING,
@@ -27,6 +28,7 @@ export class ArchitectureDocProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly progress: ProgressEventsService,
     private readonly draftingOrchestrator: DraftingOrchestratorService,
+    private readonly embedder: ArchitectureDocEmbedderService,
   ) {
     super();
   }
@@ -69,6 +71,9 @@ export class ArchitectureDocProcessor extends WorkerHost {
         `[${documentId}] Persisting ${persistedSections.length} sections (filtered from ${draft.sections.length} total)`,
       );
 
+      let docVersion = 1;
+      let docCommitSha: string | null = null;
+
       await this.prisma.$transaction(async (tx) => {
         if (persistedSections.length > 0) {
           const diagramMermaid = draft.diagram?.mermaidSource ?? null;
@@ -103,7 +108,7 @@ export class ArchitectureDocProcessor extends WorkerHost {
             ? verifiedCount / persistedSections.length
             : null;
 
-        await tx.generatedDoc.update({
+        const updatedDoc = await tx.generatedDoc.update({
           where: { id: documentId },
           data: {
             status: DocStatus.COMPLETED,
@@ -112,12 +117,35 @@ export class ArchitectureDocProcessor extends WorkerHost {
             errorMessage: null,
           },
         });
+        docVersion = updatedDoc.version;
+        docCommitSha = updatedDoc.commitSha;
+
         this.logger.log(
           `[${documentId}] Document marked COMPLETED. verificationScore=${verificationScore}`,
         );
       });
 
-      this.publishProgress(repositoryId, documentId, DocStatus.COMPLETED, null);
+      // Embed document sections into ChromaDB
+      if (persistedSections.length > 0) {
+        try {
+          this.logger.log(`[${documentId}] Initiating ChromaDB embedding for sections...`);
+          await this.embedder.embedDocument({
+            docId: documentId,
+            version: docVersion,
+            commitSha: docCommitSha,
+            sections: persistedSections.map((s) => ({
+              key: s.key,
+              title: s.title,
+              contentMd: s.contentMd,
+              sourceFiles: s.sourceFiles,
+            })),
+          });
+        } catch (embedError) {
+          this.logger.warn(
+            `[${documentId}] Embedding sections into ChromaDB encountered an error: ${(embedError as Error).message}`,
+          );
+        }
+      }
     } catch (error) {
       this.logger.error(
         `[${documentId}] Architecture draft job failed: ${(error as Error).message}`,

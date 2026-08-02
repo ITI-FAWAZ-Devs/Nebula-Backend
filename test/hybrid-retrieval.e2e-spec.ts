@@ -42,8 +42,7 @@ describe('HybridRetrieval (e2e)', () => {
           'neo4j.database': process.env.NEO4J_DATABASE || 'neo4j',
           'gemini.apiKey': process.env.GEMINI_API_KEY || '',
           'gemini.llmModel': process.env.GEMINI_LLM_MODEL || 'gemini-2.5-flash',
-          'gemini.embeddingModel':
-            process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004',
+          'gemini.embeddingModel': process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
         };
         return config[key];
       }),

@@ -17,6 +17,7 @@ import { ARCHITECTURE_DRAFT_QUEUE } from './architecture-doc.constants';
 import { ArchitectureDocController } from './architecture-doc.controller';
 import { ArchitectureDocService } from './architecture-doc.service';
 import { ArchitectureDocProcessor } from './architecture-doc.processor';
+import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.service';
 
 @Module({
   imports: [
@@ -41,11 +42,13 @@ import { ArchitectureDocProcessor } from './architecture-doc.processor';
     DraftingOrchestratorService,
     ArchitectureDocService,
     ArchitectureDocProcessor,
+    ArchitectureDocEmbedderService,
   ],
   exports: [
     HybridRetrieverService,
     DraftingOrchestratorService,
     ArchitectureDocService,
+    ArchitectureDocEmbedderService,
   ],
 })
 export class ArchitectureDocModule {}

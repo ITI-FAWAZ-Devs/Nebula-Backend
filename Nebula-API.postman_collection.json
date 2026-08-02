@@ -50,6 +50,11 @@
 			"key": "architectureDocId",
 			"value": "",
 			"type": "string"
+		},
+		{
+			"key": "sessionId",
+			"value": "",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -119,7 +124,7 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["api", "auth", "login"]
 						},
-						"description": "Login with email and password.\n\n**Body:**\n- `email` (required): Registered email\n- `password` (required): Account password\n\nReturns access & refresh tokens. Tokens are also set as HTTP-only cookies."
+						"description": "Login with email and password.\n\n**Body:**\n- `email` (required): Registered email\n- `password` (required): Account password\n\nTokens are set as HTTP-only cookies (`nebula_access_token`, `nebula_refresh_token`). The JSON body returns only the user object. Use **Refresh Tokens** to retrieve token values in the response body."
 					},
 					"response": [],
 					"event": [
@@ -131,22 +136,13 @@
 									"pm.test('Login successful', function () {",
 									"    pm.response.to.have.status(200);",
 									"    const json = pm.response.json();",
-									"    pm.expect(json.data.success).to.be.true;",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('user');",
 									"});",
 									"",
-									"// Auto-save tokens to collection variables",
-									"const json = pm.response.json();",
-									"if (json.data && json.data.data) {",
-									"    const data = json.data.data;",
-									"    if (data.accessToken) {",
-									"        pm.collectionVariables.set('accessToken', data.accessToken);",
-									"        console.log('✅ accessToken saved');",
-									"    }",
-									"    if (data.refreshToken) {",
-									"        pm.collectionVariables.set('refreshToken', data.refreshToken);",
-									"        console.log('✅ refreshToken saved');",
-									"    }",
-									"}"
+									"// Tokens are set as HTTP-only cookies (not in response body).",
+									"// Use 'Refresh Tokens' endpoint to retrieve token values.",
+									"console.log('ℹ️ Tokens were set as HTTP-only cookies');"
 								]
 							}
 						}
@@ -189,6 +185,27 @@
 							}
 						}
 					]
+				},
+				{
+					"name": "Verify Email (GET - Browser Link)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/verify-email?token={{verificationToken}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "verify-email"],
+							"query": [
+								{
+									"key": "token",
+									"value": "{{verificationToken}}",
+									"description": "Verification token from email"
+								}
+							]
+						},
+						"description": "Verify email from a link (renders HTML).\n\n⚠️ **Open this URL in a browser**, not Postman!\n\nThis endpoint renders a success/failure HTML page. It's the same as the POST version but meant for email links.\n\nOn success: shows ✅ confirmation and redirects to the frontend after 3 seconds.\nOn failure: shows ❌ error message."
+					},
+					"response": []
 				},
 				{
 					"name": "Forgot Password",
@@ -535,9 +552,9 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{baseUrl}}/",
+							"raw": "{{baseUrl}}/api",
 							"host": ["{{baseUrl}}"],
-							"path": []
+							"path": ["api"]
 						},
 						"description": "Public health check endpoint. Returns service status and timestamp."
 					},
@@ -551,8 +568,8 @@
 									"pm.test('Service operational', function () {",
 									"    pm.response.to.have.status(200);",
 									"    const json = pm.response.json();",
-									"    pm.expect(json.status).to.equal('operational');",
-									"    pm.expect(json.service).to.equal('Nebula API');",
+									"    pm.expect(json.data.status).to.equal('operational');",
+									"    pm.expect(json.data.service).to.equal('Nebula API');",
 									"});"
 								]
 							}
@@ -1182,6 +1199,134 @@
 									"",
 									"    pm.collectionVariables.set('architectureDocId', json.data.docId);",
 									"    console.log('✅ new docId saved: ' + json.data.docId);",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Agent RAG",
+			"description": "Conversational AI agent for querying repository code with reasoning, planning, and tool-use capabilities.\n\n## Flow\n1. **Create Session** — start a new agent session (scoped to a repository)\n2. Set the `sessionId` collection variable\n3. **Send Message** — post a question; response is SSE-streamed (not a single JSON body)\n4. **Get Session** — retrieve session metadata and turn history\n\n## SSE Events\nWhen posting a message, the server responds with `text/event-stream`:\n- `event: token` — a text token from the synthesizer\n- `event: citation` — a cited node from the retrieved context\n- `event: done` — stream complete (no data payload)\n- `event: error` — an error occurred\n\n⚠️ In Postman, SSE responses are not natively streamed. Send the request and let it run; the response will accumulate all SSE data chunks and display them when it finishes.",
+			"item": [
+				{
+					"name": "Create Agent Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/agent/sessions",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "repositories", "{{repositoryId}}", "agent", "sessions"]
+						},
+						"description": "Create a new agent session for a repository.\n\n**Response (201):**\n```json\n{\n  \"sessionId\": \"uuid\",\n  \"repositoryId\": \"uuid\"\n}\n```\n\nAuto-saves the `sessionId` to collection variables for subsequent requests.\n\n⚠️ Requires a `READY` repository with completed documentation indexing."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Session created (201)', function () {",
+									"    pm.response.to.have.status(201);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('sessionId');",
+									"",
+									"    // Auto-save sessionId",
+									"    pm.collectionVariables.set('sessionId', json.data.sessionId);",
+									"    console.log('✅ sessionId saved: ' + json.data.sessionId);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get Agent Session",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/agent/sessions/{{sessionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "repositories", "{{repositoryId}}", "agent", "sessions", "{{sessionId}}"]
+						},
+						"description": "Get agent session details and turn history.\n\n**Response (200):**\n```json\n{\n  \"sessionId\": \"uuid\",\n  \"repositoryId\": \"uuid\",\n  \"turnCount\": 3,\n  \"updatedAt\": \"2026-07-26T10:00:00.000Z\"\n}\n```\n\nReturns metadata only (not the full message history)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Session retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('sessionId');",
+									"    pm.expect(json.data).to.have.property('turnCount');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Send Message (SSE Stream)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"question\": \"Explain the main architecture of this project\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/repositories/{{repositoryId}}/agent/sessions/{{sessionId}}/messages",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "repositories", "{{repositoryId}}", "agent", "sessions", "{{sessionId}}", "messages"]
+						},
+						"description": "Post a message to the agent and receive a streaming SSE response.\n\n**Body:**\n- `question` (required): Max 4000 characters\n\n**SSE Events:**\n- `token`: AI-generated text token\n- `citation`: A cited code node (has `id`, `filePath`, `snippet`)\n- `done`: Stream complete\n- `error`: Error occurred\n\n⚠️ Postman does not natively parse SSE streams. The raw SSE response will accumulate and display when the stream ends."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Message posted (200)', function () {",
+									"    pm.response.to.have.status(200);",
 									"});"
 								]
 							}

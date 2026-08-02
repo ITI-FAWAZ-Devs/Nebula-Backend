@@ -31,7 +31,6 @@ export class ResponseInterceptor<T> implements NestInterceptor<
 
     return next.handle().pipe(
       map((data) => {
-        // If the controller already returned an ApiResponse shape, pass through
         if (data && typeof data === 'object' && 'success' in data) {
           return data;
         }

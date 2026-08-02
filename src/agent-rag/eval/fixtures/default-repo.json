@@ -1,0 +1,128 @@
+[
+  {
+    "id": "q01",
+    "intent": "conceptual",
+    "question": "What is the overall purpose of this repository?",
+    "expectedAnswerContains": ["repository", "code"],
+    "mustCiteFile": false
+  },
+  {
+    "id": "q02",
+    "intent": "conceptual",
+    "question": "How does authentication work in this codebase?",
+    "expectedAnswerContains": ["auth"],
+    "mustCiteFile": true
+  },
+  {
+    "id": "q03",
+    "intent": "conceptual",
+    "question": "Where is configuration loaded from?",
+    "expectedAnswerContains": ["config"],
+    "mustCiteFile": true
+  },
+  {
+    "id": "q04",
+    "intent": "conceptual",
+    "question": "How are environment variables accessed?",
+    "expectedAnswerContains": ["config"],
+    "mustCiteFile": false
+  },
+  {
+    "id": "q05",
+    "intent": "structural",
+    "question": "Which modules depend on the Neo4j service?",
+    "expectedAnswerContains": ["neo4j"],
+    "mustCiteFile": true
+  },
+  {
+    "id": "q06",
+    "intent": "structural",
+    "question": "What calls the graph builder?",
+    "expectedAnswerContains": ["graph"],
+    "mustCiteFile": false
+  },
+  {
+    "id": "q07",
+    "intent": "structural",
+    "question": "What does the analysis pipeline orchestrate?",
+    "expectedAnswerContains": ["pipeline"],
+    "mustCiteFile": true
+  },
+  {
+    "id": "q08",
+    "intent": "structural",
+    "question": "Which classes implement repository ownership checks?",
+    "expectedAnswerContains": ["repository"],
+    "mustCiteFile": false
+  },
+  {
+    "id": "q09",
+    "intent": "structural",
+    "question": "What is contained in the auth module?",
+    "expectedAnswerContains": ["auth"],
+    "mustCiteFile": true
+  },
+  {
+    "id": "q10",
+    "intent": "comparative",
+    "question": "How do Chroma and Neo4j roles differ for retrieval?",
+    "expectedAnswerContains": ["chroma", "neo4j"],
+    "mustCiteFile": false
+  },
+  {
+    "id": "q11",
+    "intent": "comparative",
+    "question": "What is the difference between analysis jobs and architecture document jobs?",
+    "expectedAnswerContains": ["job"],
+    "mustCiteFile": false
+  },
+  {
+    "id": "q12",
+    "intent": "comparative",
+    "question": "Compare JWT access and refresh token handling.",
+    "expectedAnswerContains": ["token"],
+    "mustCiteFile": true
+  },
+  {
+    "id": "q13",
+    "intent": "comparative",
+    "question": "How does hybrid retrieval differ from simple ask RAG?",
+    "expectedAnswerContains": ["retriev"],
+    "mustCiteFile": false
+  },
+  {
+    "id": "q14",
+    "intent": "doc-summary",
+    "question": "Summarize the architecture drafting pipeline.",
+    "expectedAnswerContains": ["draft"],
+    "mustCiteFile": true
+  },
+  {
+    "id": "q15",
+    "intent": "doc-summary",
+    "question": "Summarize how repositories are imported and analyzed.",
+    "expectedAnswerContains": ["repositor"],
+    "mustCiteFile": true
+  },
+  {
+    "id": "q16",
+    "intent": "doc-summary",
+    "question": "Give a short overview of the documentation indexing pipeline.",
+    "expectedAnswerContains": ["document"],
+    "mustCiteFile": false
+  },
+  {
+    "id": "q17",
+    "intent": "doc-summary",
+    "question": "Summarize the role of Graphify in the system.",
+    "expectedAnswerContains": ["graph"],
+    "mustCiteFile": false
+  },
+  {
+    "id": "q18",
+    "intent": "conceptual",
+    "question": "What happens if I ask about a feature that is not in the indexed context?",
+    "expectedAnswerContains": ["don't know", "do not know", "don't", "unknown", "not"],
+    "mustCiteFile": false
+  }
+]
