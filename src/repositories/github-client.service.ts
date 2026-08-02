@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   UnauthorizedException,
+  NotFoundException,
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
@@ -129,5 +130,68 @@ export class GithubClientService {
     });
 
     return allRepos;
+  }
+
+  /**
+   * Fetches the current head commit SHA of a repository's default branch, live from GitHub.
+   */
+  async getLatestCommitSha(
+    userId: string,
+    owner: string,
+    repo: string,
+    branch: string,
+  ): Promise<string> {
+    const account = await this.usersService.findAccountByUserAndProvider(
+      userId,
+      AuthProvider.GITHUB,
+    );
+    if (!account || !account.accessToken) {
+      throw new BadRequestException(
+        'GitHub account not linked. Please connect your GitHub account.',
+      );
+    }
+
+    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(branch)}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${account.accessToken}`,
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'Nebula-Backend',
+      },
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      const errorMessage =
+        errorBody?.message || 'Failed to fetch latest commit from GitHub';
+
+      if (response.status === 401) {
+        throw new UnauthorizedException(
+          'GitHub OAuth token has expired or is invalid. Please reconnect your account.',
+        );
+      }
+
+      if (response.status === 404) {
+        throw new NotFoundException(
+          `Repository ${owner}/${repo} or branch ${branch} not found on GitHub`,
+        );
+      }
+
+      throw new HttpException(
+        `GitHub API error: ${errorMessage}`,
+        response.status || HttpStatus.BAD_GATEWAY,
+      );
+    }
+
+    const commit = (await response.json()) as { sha?: string };
+    if (!commit.sha) {
+      throw new HttpException(
+        'GitHub API returned no commit SHA',
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+
+    return commit.sha;
   }
 }

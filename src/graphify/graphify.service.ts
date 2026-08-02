@@ -26,8 +26,7 @@ export class GraphifyService {
     workspace: WorkspaceContext,
   ): Promise<GraphifyResult> {
     const bin = this.configService.get<string>('graphify.bin') || 'graphify';
-    const argsTemplate =
-      this.configService.get<string>('graphify.args') || '';
+    const argsTemplate = this.configService.get<string>('graphify.args') || '';
     const timeoutMs =
       this.configService.get<number>('graphify.timeoutMs') || 300000;
 
@@ -99,9 +98,7 @@ export class GraphifyService {
       const raw = await fs.readFile(outputFile, 'utf-8');
       const parsed = JSON.parse(raw) as Record<string, unknown>;
 
-      const nodes = (parsed.nodes ||
-        parsed.entities ||
-        []) as GraphifyNode[];
+      const nodes = (parsed.nodes || parsed.entities || []) as GraphifyNode[];
       const edges = (parsed.edges ||
         parsed.relationships ||
         parsed.links ||

@@ -47,7 +47,12 @@ describe('DraftingOrchestratorService', () => {
   const mockContext: HybridRetrievalContext = {
     repositoryId: 'repo-123',
     files: [
-      { filePath: 'src/auth.ts', description: 'Auth module', evidenceSources: ['semantic'], combinedScore: 100 },
+      {
+        filePath: 'src/auth.ts',
+        description: 'Auth module',
+        evidenceSources: ['semantic'],
+        combinedScore: 100,
+      },
     ],
     relationships: [],
     moduleClusters: [],
@@ -87,12 +92,24 @@ describe('DraftingOrchestratorService', () => {
       ],
     }).compile();
 
-    service = module.get<DraftingOrchestratorService>(DraftingOrchestratorService);
-    structurePlanner = module.get<StructurePlannerService>(StructurePlannerService);
-    sectionGenerator = module.get<SectionGeneratorService>(SectionGeneratorService);
-    sectionVerifier = module.get<SectionVerifierService>(SectionVerifierService);
-    diagramGenerator = module.get<DiagramGeneratorService>(DiagramGeneratorService);
-    hybridRetriever = module.get<HybridRetrieverService>(HybridRetrieverService);
+    service = module.get<DraftingOrchestratorService>(
+      DraftingOrchestratorService,
+    );
+    structurePlanner = module.get<StructurePlannerService>(
+      StructurePlannerService,
+    );
+    sectionGenerator = module.get<SectionGeneratorService>(
+      SectionGeneratorService,
+    );
+    sectionVerifier = module.get<SectionVerifierService>(
+      SectionVerifierService,
+    );
+    diagramGenerator = module.get<DiagramGeneratorService>(
+      DiagramGeneratorService,
+    );
+    hybridRetriever = module.get<HybridRetrieverService>(
+      HybridRetrieverService,
+    );
     prisma = module.get<PrismaService>(PrismaService);
 
     jest.clearAllMocks();
@@ -152,7 +169,9 @@ describe('DraftingOrchestratorService', () => {
       });
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
       mockStructurePlanner.plan.mockResolvedValue(mockPlan);
-      mockSectionGenerator.generate.mockRejectedValue(new Error('Generation failed'));
+      mockSectionGenerator.generate.mockRejectedValue(
+        new Error('Generation failed'),
+      );
 
       const result = await service.draft({ repositoryId });
 
@@ -170,7 +189,9 @@ describe('DraftingOrchestratorService', () => {
       mockStructurePlanner.plan.mockResolvedValue(mockPlan);
       mockSectionGenerator.generate.mockResolvedValue(mockSection);
       mockSectionVerifier.verify.mockResolvedValue(mockSection);
-      mockDiagramGenerator.generate.mockRejectedValue(new Error('Diagram failed'));
+      mockDiagramGenerator.generate.mockRejectedValue(
+        new Error('Diagram failed'),
+      );
 
       const result = await service.draft({ repositoryId });
 
@@ -205,9 +226,9 @@ describe('DraftingOrchestratorService', () => {
     it('should fail when repository does not exist', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue(null);
 
-      await expect(service.draft({ repositoryId: 'nonexistent' })).rejects.toThrow(
-        'Repository nonexistent not found',
-      );
+      await expect(
+        service.draft({ repositoryId: 'nonexistent' }),
+      ).rejects.toThrow('Repository nonexistent not found');
     });
 
     it('should fail when repository status is not READY', async () => {
@@ -242,7 +263,11 @@ describe('DraftingOrchestratorService', () => {
         progressStatuses.push(status);
       });
 
-      expect(progressStatuses).toEqual(['RETRIEVING', 'GENERATING', 'VERIFYING']);
+      expect(progressStatuses).toEqual([
+        'RETRIEVING',
+        'GENERATING',
+        'VERIFYING',
+      ]);
       expect(result.repositoryId).toBe(repositoryId);
       expect(result.sections).toHaveLength(1);
       expect(result.sections[0].verdict).toBe('verified');

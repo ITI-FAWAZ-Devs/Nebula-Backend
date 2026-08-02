@@ -15,7 +15,9 @@ import { CreateArchitectureDocDto } from './dto/architecture-doc.dto';
 
 @Controller('repositories/:repositoryId/architecture-doc')
 export class ArchitectureDocController {
-  constructor(private readonly architectureDocService: ArchitectureDocService) {}
+  constructor(
+    private readonly architectureDocService: ArchitectureDocService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
@@ -109,16 +111,17 @@ export class ArchitectureDocController {
   async regenerate(
     @CurrentUser('id') userId: string,
     @Param('repositoryId', ParseUUIDPipe) repositoryId: string,
-    @Body() dto: CreateArchitectureDocDto,
   ) {
-    const data = await this.architectureDocService.start(
+    const data = await this.architectureDocService.regenerate(
       userId,
       repositoryId,
-      dto,
     );
+    const message = data.needsRegeneration
+      ? 'Architecture document regeneration accepted'
+      : 'No new changes to regenerate';
     return {
       success: true,
-      message: 'Architecture document regeneration accepted',
+      message,
       data,
     };
   }

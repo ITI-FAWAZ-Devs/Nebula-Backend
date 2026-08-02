@@ -1,17 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  DocumentationJobStatus,
-  RepositoryStatus,
-} from '@prisma/client';
+import { DocumentationJobStatus, RepositoryStatus } from '@prisma/client';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import simpleGit from 'simple-git';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProgressEventsService } from '../progress/progress-events.service';
 import { WorkspaceService } from '../workspace/workspace.service';
 import { WorkspaceContext } from '../workspace/interfaces/workspace-context.interface';
 import { GitService } from '../git/git.service';
 import { DiscoveryService } from '../discovery/discovery.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
+import {
+  collectionNameFor,
+  embeddingSpaceMetadata,
+} from '../ai-provider/embedding-space.util';
 import { ChromaService } from '../chroma/chroma.service';
 
 @Injectable()
@@ -20,12 +22,13 @@ export class DocumentationPipeline {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly progress: ProgressEventsService,
     private readonly workspaceService: WorkspaceService,
     private readonly gitService: GitService,
     private readonly discoveryService: DiscoveryService,
-    private readonly geminiService: GeminiService,
+    private readonly aiProviderService: AiProviderService,
     private readonly chromaService: ChromaService,
-  ) { }
+  ) {}
 
   /**
    * Executes the documentation pipeline for a repository.
@@ -39,7 +42,7 @@ export class DocumentationPipeline {
 
     try {
       // 1. Update job to RUNNING
-      await this.updateJob(jobId, {
+      await this.updateJob(repositoryId, jobId, {
         status: DocumentationJobStatus.RUNNING,
         stage: 'starting',
         startedAt: new Date(),
@@ -63,14 +66,16 @@ export class DocumentationPipeline {
       }
 
       if (isPathAccessible && localPath) {
-        this.logger.log(`Reusing existing local path ${localPath} for repository ${repositoryId}`);
+        this.logger.log(
+          `Reusing existing local path ${localPath} for repository ${repositoryId}`,
+        );
         // Get the commit hash at HEAD
         try {
           const git = simpleGit(localPath);
           commitHash = (await git.revparse(['HEAD'])).trim();
         } catch (err) {
           this.logger.warn(
-            `Failed to revparse HEAD in existing localPath ${localPath}: ${(err as Error).message}`
+            `Failed to revparse HEAD in existing localPath ${localPath}: ${(err as Error).message}`,
           );
         }
       } else {
@@ -123,19 +128,23 @@ export class DocumentationPipeline {
         throw new Error('No indexable code files found in repository');
       }
 
-      // 3. Describe files using Gemini (one file at a time to avoid hammering the API)
+      // 3. Describe files using the AI provider (one file at a time to avoid hammering the API)
       await this.setStage(jobId, repositoryId, 'describe_files', null);
 
       const descriptions: ({ file: string; description: string } | null)[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         try {
-          const fullPath = path.join(localPath!, file);
+          const fullPath = path.join(localPath, file);
           const content = await fs.readFile(fullPath, 'utf-8');
-          const description = await this.geminiService.describeFile(file, content);
+          const description = (
+            await this.aiProviderService.describeFile(file, content)
+          ).text;
           descriptions.push({ file, description });
         } catch (err) {
-          this.logger.error(`Error describing file ${file}: ${(err as Error).message}`);
+          this.logger.error(
+            `Error describing file ${file}: ${(err as Error).message}`,
+          );
           descriptions.push(null);
         }
         // 1 second pause between calls to avoid Gemini rate limits
@@ -145,17 +154,25 @@ export class DocumentationPipeline {
       }
 
       const validDescriptions = descriptions.filter(
-        (d): d is { file: string; description: string } => d !== null
+        (d): d is { file: string; description: string } => d !== null,
       );
 
       if (validDescriptions.length === 0) {
-        throw new Error('Failed to generate description for any file in the repository');
+        throw new Error(
+          'Failed to generate description for any file in the repository',
+        );
       }
 
-      // 4. Batch embed file descriptions
+      // 4. Batch embed file descriptions. Indexing uses `search_document`
+      // input type so the gateway embeds in the document vector space.
       await this.setStage(jobId, repositoryId, 'embed_descriptions', null);
       const textToEmbed = validDescriptions.map((d) => d.description);
-      const embeddings = await this.geminiService.embedMany(textToEmbed);
+      const embedResult = await this.aiProviderService.embedMany(
+        textToEmbed,
+        'search_document',
+      );
+
+      const embeddingMeta = embeddingSpaceMetadata(embedResult);
 
       // Map to Chroma chunks
       const chunks = validDescriptions.map((d, index) => {
@@ -169,14 +186,23 @@ export class DocumentationPipeline {
             filePath: d.file,
             language: fileLanguage,
             commitHash: commitHash || 'unknown',
+            ...embeddingMeta,
           },
-          embedding: embeddings[index],
+          embedding: embedResult.embeddings[index],
         };
       });
 
-      // 5. Wipe-and-rebuild Chroma collection
+      // 5. Wipe-and-rebuild the Chroma collection that matches this run's
+      // embedding space. Primary embeddings go to `repo-<id>`; embeddings
+      // produced by a fallback provider are quarantined into a per-space
+      // collection (`repo-<id>-quarantine-<provider>-<model>-<dims>d`) so the
+      // vector spaces are never mixed — including between different fallback
+      // providers.
+      // TODO(re-embedding): once the primary provider is healthy again,
+      // re-embed quarantined documents into the primary collection
+      // (re-indexing is a separate task).
       await this.setStage(jobId, repositoryId, 'save_chroma', null);
-      const collectionName = `repo-${repositoryId}`;
+      const collectionName = collectionNameFor(repositoryId, embedResult);
 
       // Wipe the collection if it exists
       await this.chromaService.deleteCollection(collectionName);
@@ -193,24 +219,31 @@ export class DocumentationPipeline {
         },
       });
 
-      await this.updateJob(jobId, {
+      await this.updateJob(repositoryId, jobId, {
         status: DocumentationJobStatus.COMPLETED,
         stage: 'done',
         finishedAt: new Date(),
         error: null,
       });
 
-      this.logger.log(`Documentation indexing completed for repository ${repositoryId}`);
+      this.logger.log(
+        `Documentation indexing completed for repository ${repositoryId}`,
+      );
     } catch (error) {
-      const message = (error as Error).message || 'Unknown documentation pipeline error';
-      this.logger.error(`Documentation pipeline failed for repository ${repositoryId}: ${message}`);
+      const message =
+        (error as Error).message || 'Unknown documentation pipeline error';
+      this.logger.error(
+        `Documentation pipeline failed for repository ${repositoryId}: ${message}`,
+      );
 
-      await this.prisma.repository.update({
-        where: { id: repositoryId },
-        data: { status: RepositoryStatus.FAILED },
-      }).catch(() => undefined);
+      await this.prisma.repository
+        .update({
+          where: { id: repositoryId },
+          data: { status: RepositoryStatus.FAILED },
+        })
+        .catch(() => undefined);
 
-      await this.updateJob(jobId, {
+      await this.updateJob(repositoryId, jobId, {
         status: DocumentationJobStatus.FAILED,
         error: message,
         finishedAt: new Date(),
@@ -220,9 +253,11 @@ export class DocumentationPipeline {
     } finally {
       // Clean up workspace if it was created
       if (workspace) {
-        await this.workspaceService.cleanup(workspace).catch((err) =>
-          this.logger.error(`Failed to cleanup workspace: ${err.message}`)
-        );
+        await this.workspaceService
+          .cleanup(workspace)
+          .catch((err) =>
+            this.logger.error(`Failed to cleanup workspace: ${err.message}`),
+          );
       }
     }
   }
@@ -233,7 +268,7 @@ export class DocumentationPipeline {
     stage: string,
     repoStatus: RepositoryStatus | null,
   ): Promise<void> {
-    await this.updateJob(jobId, { stage });
+    await this.updateJob(repositoryId, jobId, { stage });
     if (repoStatus) {
       await this.prisma.repository.update({
         where: { id: repositoryId },
@@ -243,6 +278,7 @@ export class DocumentationPipeline {
   }
 
   private async updateJob(
+    repositoryId: string,
     jobId: string,
     data: {
       status?: DocumentationJobStatus;
@@ -256,12 +292,22 @@ export class DocumentationPipeline {
       where: { id: jobId },
       data,
     });
+
+    const fresh = await this.prisma.documentationJob.findUnique({
+      where: { id: jobId },
+    });
+    if (fresh) {
+      this.progress.publishDocumentation(repositoryId, fresh);
+    }
   }
 
   /**
    * Helper to scan directories recursively and get code files, filtering out binary/ignored/large files.
    */
-  private async getFilesRecursively(dir: string, baseDir = dir): Promise<string[]> {
+  private async getFilesRecursively(
+    dir: string,
+    baseDir = dir,
+  ): Promise<string[]> {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     const files: string[] = [];
 
@@ -290,9 +336,31 @@ export class DocumentationPipeline {
         // Skip common binary files or files that are probably not code
         const ext = path.extname(entry.name).toLowerCase();
         const binaryExtensions = new Set([
-          '.png', '.jpg', '.jpeg', '.gif', '.ico', '.pdf', '.zip', '.tar', '.gz',
-          '.mp3', '.mp4', '.avi', '.mov', '.webp', '.woff', '.woff2', '.ttf',
-          '.eot', '.db', '.sqlite', '.exe', '.dll', '.so', '.dmg', '.jar'
+          '.png',
+          '.jpg',
+          '.jpeg',
+          '.gif',
+          '.ico',
+          '.pdf',
+          '.zip',
+          '.tar',
+          '.gz',
+          '.mp3',
+          '.mp4',
+          '.avi',
+          '.mov',
+          '.webp',
+          '.woff',
+          '.woff2',
+          '.ttf',
+          '.eot',
+          '.db',
+          '.sqlite',
+          '.exe',
+          '.dll',
+          '.so',
+          '.dmg',
+          '.jar',
         ]);
 
         if (binaryExtensions.has(ext)) {

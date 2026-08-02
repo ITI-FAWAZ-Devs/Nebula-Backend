@@ -1,9 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  AnalysisJobStatus,
-  RepositoryStatus,
-} from '@prisma/client';
+import { AnalysisJobStatus, RepositoryStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProgressEventsService } from '../progress/progress-events.service';
 import { WorkspaceService } from '../workspace/workspace.service';
 import { WorkspaceContext } from '../workspace/interfaces/workspace-context.interface';
 import { GitService } from '../git/git.service';
@@ -19,6 +17,7 @@ export class AnalysisPipeline {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly progress: ProgressEventsService,
     private readonly workspaceService: WorkspaceService,
     private readonly gitService: GitService,
     private readonly discoveryService: DiscoveryService,
@@ -36,7 +35,7 @@ export class AnalysisPipeline {
     let workspace: WorkspaceContext | null = null;
 
     try {
-      await this.updateJob(analysisJobId, {
+      await this.updateJob(repositoryId, analysisJobId, {
         status: AnalysisJobStatus.RUNNING,
         stage: 'starting',
         startedAt: new Date(),
@@ -80,9 +79,7 @@ export class AnalysisPipeline {
         'discovery',
         RepositoryStatus.INDEXING,
       );
-      const project = await this.discoveryService.scan(
-        cloneResult.localPath,
-      );
+      const project = await this.discoveryService.scan(cloneResult.localPath);
 
       // 4. Graphify analysis
       await this.setStage(analysisJobId, repositoryId, 'graphify', null);
@@ -108,7 +105,7 @@ export class AnalysisPipeline {
         where: { id: repositoryId },
         data: { status: RepositoryStatus.READY },
       });
-      await this.updateJob(analysisJobId, {
+      await this.updateJob(repositoryId, analysisJobId, {
         status: AnalysisJobStatus.COMPLETED,
         stage: 'done',
         finishedAt: new Date(),
@@ -131,7 +128,7 @@ export class AnalysisPipeline {
         })
         .catch(() => undefined);
 
-      await this.updateJob(analysisJobId, {
+      await this.updateJob(repositoryId, analysisJobId, {
         status: AnalysisJobStatus.FAILED,
         error: message,
         finishedAt: new Date(),
@@ -152,7 +149,7 @@ export class AnalysisPipeline {
     stage: string,
     repoStatus: RepositoryStatus | null,
   ): Promise<void> {
-    await this.updateJob(analysisJobId, { stage });
+    await this.updateJob(repositoryId, analysisJobId, { stage });
     if (repoStatus) {
       await this.prisma.repository.update({
         where: { id: repositoryId },
@@ -162,6 +159,7 @@ export class AnalysisPipeline {
   }
 
   private async updateJob(
+    repositoryId: string,
     analysisJobId: string,
     data: {
       status?: AnalysisJobStatus;
@@ -176,5 +174,12 @@ export class AnalysisPipeline {
       where: { id: analysisJobId },
       data,
     });
+
+    const fresh = await this.prisma.analysisJob.findUnique({
+      where: { id: analysisJobId },
+    });
+    if (fresh) {
+      this.progress.publishAnalysis(repositoryId, fresh);
+    }
   }
 }

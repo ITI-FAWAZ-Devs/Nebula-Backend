@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
+import { collectionNameFor } from '../ai-provider/embedding-space.util';
 import { ChromaService } from '../chroma/chroma.service';
 import { Neo4jService } from '../neo4j/neo4j.service';
 import {
@@ -28,9 +29,11 @@ interface ChromaRecord {
  */
 @Injectable()
 export class HybridRetrieverService {
+  private readonly logger = new Logger(HybridRetrieverService.name);
+
   constructor(
     private readonly prisma: PrismaService,
-    private readonly gemini: GeminiService,
+    private readonly aiProvider: AiProviderService,
     private readonly chroma: ChromaService,
     private readonly neo4j: Neo4jService,
   ) {}
@@ -82,17 +85,32 @@ export class HybridRetrieverService {
 
     if (topic) {
       try {
-        const embedding = await this.gemini.embedString(topic);
-        const chromaResult = await this.chroma.queryCollection(
-          `repo-${repositoryId}`,
-          embedding,
-          semanticLimit,
+        const embedResult = await this.aiProvider.embedString(
+          topic,
+          'search_query',
         );
-        semanticRecords = this.parseSemanticResults(
-          chromaResult,
-          repositoryId,
-        );
-        semanticStatus = semanticRecords.length > 0 ? 'available' : 'empty';
+        // Query only the collection that matches this query's embedding
+        // space. A fallback embedding must never be searched against the
+        // primary collection because the vector spaces differ.
+        const collectionName = collectionNameFor(repositoryId, embedResult);
+        if (!(await this.chroma.collectionExists(collectionName))) {
+          this.logger.warn(
+            `No "${collectionName}" collection for repository ${repositoryId} in embedding space "${embedResult.provider}" (${embedResult.dimensions}-dim); treating semantic source as empty`,
+          );
+          semanticRecords = [];
+          semanticStatus = 'empty';
+        } else {
+          const chromaResult = await this.chroma.queryCollection(
+            collectionName,
+            embedResult.embedding,
+            semanticLimit,
+          );
+          semanticRecords = this.parseSemanticResults(
+            chromaResult,
+            repositoryId,
+          );
+          semanticStatus = semanticRecords.length > 0 ? 'available' : 'empty';
+        }
       } catch {
         semanticStatus = 'unavailable';
         semanticRecords = [];
@@ -102,10 +120,7 @@ export class HybridRetrieverService {
     }
 
     const allSeedPaths = [
-      ...new Set([
-        ...semanticRecords.map((r) => r.filePath),
-        ...seedPaths,
-      ]),
+      ...new Set([...semanticRecords.map((r) => r.filePath), ...seedPaths]),
     ];
 
     if (allSeedPaths.length > 0) {
@@ -118,20 +133,26 @@ export class HybridRetrieverService {
         graphEdges = neighborhood.edges
           .filter((e) => e.fromFilePath.length > 0 && e.toFilePath.length > 0)
           .map((e) => ({
-          fromFilePath: e.fromFilePath,
-          toFilePath: e.toFilePath,
-          type: e.type,
-          hopDistance: e.hopDistance,
-          edgeId: e.id,
-        }));
+            fromFilePath: e.fromFilePath,
+            toFilePath: e.toFilePath,
+            type: e.type,
+            hopDistance: e.hopDistance,
+            edgeId: e.id,
+          }));
         graphClusters = neighborhood.clusters;
         const nodeMinHops = new Map<string, number>();
         for (const e of neighborhood.edges) {
           const hop = e.hopDistance;
-          if (!nodeMinHops.has(e.fromFilePath) || (nodeMinHops.get(e.fromFilePath) ?? Infinity) > hop) {
+          if (
+            !nodeMinHops.has(e.fromFilePath) ||
+            (nodeMinHops.get(e.fromFilePath) ?? Infinity) > hop
+          ) {
             nodeMinHops.set(e.fromFilePath, hop);
           }
-          if (!nodeMinHops.has(e.toFilePath) || (nodeMinHops.get(e.toFilePath) ?? Infinity) > hop) {
+          if (
+            !nodeMinHops.has(e.toFilePath) ||
+            (nodeMinHops.get(e.toFilePath) ?? Infinity) > hop
+          ) {
             nodeMinHops.set(e.toFilePath, hop);
           }
         }
@@ -139,9 +160,9 @@ export class HybridRetrieverService {
           neighborhood.nodes
             .filter((n) => n.filePath.length > 0)
             .map((n) => [
-            n.filePath,
-            { minHop: nodeMinHops.get(n.filePath) ?? 0 },
-          ]),
+              n.filePath,
+              { minHop: nodeMinHops.get(n.filePath) ?? 0 },
+            ]),
         );
         graphStatus = neighborhood.nodes.length > 0 ? 'available' : 'empty';
       } catch {
@@ -297,8 +318,15 @@ export class HybridRetrieverService {
     hasGraph: boolean,
     graphHop: number = 0,
   ): number {
-    const baseScore = semanticRank === Infinity ? 1000 : 1000 - semanticRank * 10;
-    const graphBoost = hasGraph ? (graphHop === 1 ? 10 : graphHop === 2 ? 5 : 5) : 0;
+    const baseScore =
+      semanticRank === Infinity ? 1000 : 1000 - semanticRank * 10;
+    const graphBoost = hasGraph
+      ? graphHop === 1
+        ? 10
+        : graphHop === 2
+          ? 5
+          : 5
+      : 0;
     const bothSignalBoost = hasSemantic && hasGraph ? 3 : 0;
     return baseScore + graphBoost + bothSignalBoost;
   }

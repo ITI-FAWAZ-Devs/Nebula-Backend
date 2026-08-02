@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { AuthProvider } from '@prisma/client';
 import simpleGit, { SimpleGit } from 'simple-git';
 import * as fs from 'fs/promises';

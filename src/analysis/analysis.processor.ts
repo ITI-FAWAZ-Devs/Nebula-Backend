@@ -2,10 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { AnalysisPipeline } from './analysis.pipeline';
-import {
-  ANALYSIS_QUEUE,
-  AnalysisJobPayload,
-} from './analysis.constants';
+import { ANALYSIS_QUEUE, AnalysisJobPayload } from './analysis.constants';
 
 @Processor(ANALYSIS_QUEUE)
 export class AnalysisProcessor extends WorkerHost {

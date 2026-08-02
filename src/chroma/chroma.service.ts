@@ -8,10 +8,13 @@ export class ChromaService {
   private readonly client: CloudClient;
 
   constructor(private readonly configService: ConfigService) {
-    const host = this.configService.get<string>('chroma.host') || 'api.trychroma.com';
+    const host =
+      this.configService.get<string>('chroma.host') || 'api.trychroma.com';
     const apiKey = this.configService.get<string>('chroma.apiKey');
-    const tenant = this.configService.get<string>('chroma.tenant') || 'default_tenant';
-    const database = this.configService.get<string>('chroma.database') || 'default_database';
+    const tenant =
+      this.configService.get<string>('chroma.tenant') || 'default_tenant';
+    const database =
+      this.configService.get<string>('chroma.database') || 'default_database';
 
     if (!apiKey) {
       this.logger.warn('Chroma API key is not configured');
@@ -35,23 +38,40 @@ export class ChromaService {
         name: collectionName,
       });
     } catch (error) {
-      this.logger.error(`Failed to get or create collection ${collectionName}: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to get or create collection ${collectionName}: ${(error as Error).message}`,
+      );
       throw error;
+    }
+  }
+
+  /**
+   * Returns true if a collection with the given name already exists.
+   * Used to avoid querying collections that live in a different embedding
+   * space (e.g. the quarantine collection written during provider fallback).
+   */
+  async collectionExists(collectionName: string): Promise<boolean> {
+    try {
+      await this.client.getCollection({ name: collectionName });
+      return true;
+    } catch {
+      return false;
     }
   }
 
   /**
    * Deletes a collection and all its contents if it exists.
    */
-  async deleteCollection(collectionName: string) {
-    try {
+  async deleteCollection(collectionName: string) {    try {
       this.logger.log(`Deleting Chroma collection: ${collectionName}`);
       await this.client.deleteCollection({
         name: collectionName,
       });
     } catch (error) {
       // If collection does not exist, deleteCollection might throw. We log a warning.
-      this.logger.warn(`Failed to delete collection ${collectionName}: ${(error as Error).message}`);
+      this.logger.warn(
+        `Failed to delete collection ${collectionName}: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -60,7 +80,12 @@ export class ChromaService {
    */
   async upsertChunks(
     collectionName: string,
-    chunks: Array<{ id: string; document: string; metadata: Record<string, any>; embedding: number[] }>
+    chunks: Array<{
+      id: string;
+      document: string;
+      metadata: Record<string, any>;
+      embedding: number[];
+    }>,
   ) {
     if (chunks.length === 0) return;
 
@@ -71,7 +96,9 @@ export class ChromaService {
       const metadatas = chunks.map((c) => c.metadata);
       const embeddings = chunks.map((c) => c.embedding);
 
-      this.logger.log(`Upserting ${chunks.length} chunks to collection ${collectionName}`);
+      this.logger.log(
+        `Upserting ${chunks.length} chunks to collection ${collectionName}`,
+      );
       await collection.upsert({
         ids,
         documents,
@@ -79,7 +106,9 @@ export class ChromaService {
         embeddings,
       });
     } catch (error) {
-      this.logger.error(`Failed to upsert chunks to collection ${collectionName}: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to upsert chunks to collection ${collectionName}: ${(error as Error).message}`,
+      );
       throw error;
     }
   }
@@ -87,10 +116,16 @@ export class ChromaService {
   /**
    * Performs a similarity query (top-K results) in the collection using the query embedding.
    */
-  async queryCollection(collectionName: string, queryEmbedding: number[], limit = 5) {
+  async queryCollection(
+    collectionName: string,
+    queryEmbedding: number[],
+    limit = 5,
+  ) {
     try {
       const collection = await this.getOrCreateCollection(collectionName);
-      this.logger.log(`Querying collection ${collectionName} with limit ${limit}`);
+      this.logger.log(
+        `Querying collection ${collectionName} with limit ${limit}`,
+      );
       const result = await collection.query({
         queryEmbeddings: [queryEmbedding],
         nResults: limit,
@@ -98,7 +133,9 @@ export class ChromaService {
 
       return result;
     } catch (error) {
-      this.logger.error(`Failed to query collection ${collectionName}: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to query collection ${collectionName}: ${(error as Error).message}`,
+      );
       throw error;
     }
   }

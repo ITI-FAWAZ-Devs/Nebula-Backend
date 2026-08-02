@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
 import { SectionPlan } from './dto/architecture-draft.dto';
 import { buildStructurePlanPrompt } from './templates/structure-plan.prompt';
@@ -21,7 +21,7 @@ export class StructurePlannerService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly gemini: GeminiService,
+    private readonly aiProvider: AiProviderService,
     private readonly hybridRetriever: HybridRetrieverService,
   ) {}
 
@@ -56,7 +56,9 @@ export class StructurePlannerService {
 
     let response: string;
     try {
-      response = await this.gemini.generateContent(prompt);
+      response = (
+        await this.aiProvider.generateContent(prompt, { tier: 'strong' })
+      ).text;
     } catch (error) {
       this.logger.error(
         `Failed to generate structure plan: ${(error as Error).message}`,
@@ -71,7 +73,9 @@ export class StructurePlannerService {
       this.logger.warn(
         `Malformed JSON response, retrying: ${(error as Error).message}`,
       );
-      response = await this.gemini.generateContent(prompt);
+      response = (
+        await this.aiProvider.generateContent(prompt, { tier: 'strong' })
+      ).text;
       plans = await extractJsonFromLlmText(response, validateSectionPlanArray);
     }
 

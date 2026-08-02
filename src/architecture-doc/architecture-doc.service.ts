@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import { DocStatus, RepositoryStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProgressEventsService } from '../progress/progress-events.service';
 import {
   ARCHITECTURE_DRAFT_QUEUE,
   ArchitectureDraftJobPayload,
@@ -20,7 +21,9 @@ import {
   ArchitectureDocResponse,
   ArchitectureDocVersionSummary,
   ArchitectureDocSectionResponse,
+  ArchitectureDocRegenerateResponse,
 } from './dto/architecture-doc.dto';
+import { GithubClientService } from '../repositories/github-client.service';
 
 const ACTIVE_STATUSES: DocStatus[] = [
   DocStatus.PENDING,
@@ -36,6 +39,8 @@ export class ArchitectureDocService {
     private readonly configService: ConfigService,
     @InjectQueue(ARCHITECTURE_DRAFT_QUEUE)
     private readonly architectureDraftQueue: Queue,
+    private readonly progress: ProgressEventsService,
+    private readonly githubClientService: GithubClientService,
   ) {}
 
   async start(
@@ -47,84 +52,80 @@ export class ArchitectureDocService {
     this.assertRepositoryReady(repository);
     this.assertValidCommit(repository, dto.commitSha);
 
-    const commitSha = dto.commitSha ?? repository.lastIndexedCommit ?? undefined;
-    const model =
-      this.configService.get<string>('gemini.llmModel') || 'gemini-2.5-flash';
+    const commitSha =
+      dto.commitSha ?? repository.lastIndexedCommit ?? undefined;
 
-    const activeDoc = await this.prisma.generatedDoc.findFirst({
-      where: {
-        repositoryId,
-        status: { in: ACTIVE_STATUSES },
-      },
-      orderBy: { version: 'desc' },
-    });
-
+    const activeDoc = await this.findActiveDocument(repositoryId);
     if (activeDoc) {
+      this.publishArchDoc(repositoryId, activeDoc);
       return this.toTriggerResponse(activeDoc);
     }
 
-    let created = false;
-    const document = await this.prisma.$transaction(async (tx) => {
-      const activeInTx = await tx.generatedDoc.findFirst({
-        where: {
-          repositoryId,
-          status: { in: ACTIVE_STATUSES },
-        },
-        orderBy: { version: 'desc' },
-      });
+    return this.createAndEnqueueVersion(
+      repository,
+      commitSha ?? null,
+      userId,
+      this.resolveModel(),
+    );
+  }
 
-      if (activeInTx) {
-        return activeInTx;
-      }
+  async regenerate(
+    userId: string,
+    repositoryId: string,
+  ): Promise<ArchitectureDocRegenerateResponse> {
+    const repository = await this.findOwnedRepository(userId, repositoryId);
+    this.assertRepositoryReady(repository);
 
-      const latest = await tx.generatedDoc.findFirst({
-        where: { repositoryId },
-        orderBy: { version: 'desc' },
-        select: { version: true },
-      });
+    const activeDoc = await this.findActiveDocument(repositoryId);
+    if (activeDoc) {
+      this.publishArchDoc(repositoryId, activeDoc);
+      return {
+        needsRegeneration: true,
+        docId: activeDoc.id,
+        jobId: activeDoc.id,
+        version: activeDoc.version,
+        status: activeDoc.status,
+      };
+    }
 
-      created = true;
-      return tx.generatedDoc.create({
-        data: {
-          repositoryId,
-          version: (latest?.version ?? 0) + 1,
-          status: DocStatus.PENDING,
-          commitSha: commitSha ?? null,
-          triggeredByUserId: userId,
-          model,
-        },
-      });
+    const latestDoc = await this.prisma.generatedDoc.findFirst({
+      where: { repositoryId, status: DocStatus.COMPLETED },
+      orderBy: { version: 'desc' },
+      select: { version: true, commitSha: true },
     });
 
-    if (!created) {
-      return this.toTriggerResponse(document);
+    if (!latestDoc) {
+      throw new BadRequestException(
+        'No completed architecture document to regenerate',
+      );
     }
 
-    const payload: ArchitectureDraftJobPayload = {
-      repositoryId,
-      documentId: document.id,
+    const currentCommit = await this.githubClientService.getLatestCommitSha(
       userId,
-    };
+      repository.owner,
+      repository.name,
+      repository.defaultBranch,
+    );
 
-    try {
-      await this.architectureDraftQueue.add('draft', payload, {
-        jobId: document.id,
-        attempts: 1,
-        removeOnComplete: 100,
-        removeOnFail: 50,
-      });
-    } catch (error) {
-      await this.prisma.generatedDoc.update({
-        where: { id: document.id },
-        data: {
-          status: DocStatus.FAILED,
-          errorMessage: this.boundErrorMessage(error),
-        },
-      });
-      throw error;
+    if (latestDoc.commitSha && currentCommit === latestDoc.commitSha) {
+      return {
+        needsRegeneration: false,
+        currentCommitSha: currentCommit,
+        latestVersion: latestDoc.version,
+      };
     }
 
-    return this.toTriggerResponse(document);
+    const response = await this.createAndEnqueueVersion(
+      repository,
+      currentCommit,
+      userId,
+      this.resolveModel(),
+    );
+
+    return {
+      needsRegeneration: true,
+      ...response,
+    };
   }
 
   async getLatestCompleted(
@@ -224,6 +225,107 @@ export class ArchitectureDocService {
     return this.toDocumentResponse(document);
   }
 
+  private async findActiveDocument(repositoryId: string) {
+    return this.prisma.generatedDoc.findFirst({
+      where: {
+        repositoryId,
+        status: { in: ACTIVE_STATUSES },
+      },
+      orderBy: { version: 'desc' },
+    });
+  }
+
+  private async createAndEnqueueVersion(
+    repository: {
+      id: string;
+      status: RepositoryStatus;
+      lastIndexedCommit: string | null;
+    },
+    commitSha: string | null,
+    userId: string,
+    model: string,
+  ): Promise<ArchitectureDocTriggerResponse> {
+    const { id: repositoryId } = repository;
+
+    let created = false;
+    const document = await this.prisma.$transaction(async (tx) => {
+      const activeInTx = await tx.generatedDoc.findFirst({
+        where: {
+          repositoryId,
+          status: { in: ACTIVE_STATUSES },
+        },
+        orderBy: { version: 'desc' },
+      });
+
+      if (activeInTx) {
+        return activeInTx;
+      }
+
+      const latest = await tx.generatedDoc.findFirst({
+        where: { repositoryId },
+        orderBy: { version: 'desc' },
+        select: { version: true },
+      });
+
+      created = true;
+      return tx.generatedDoc.create({
+        data: {
+          repositoryId,
+          version: (latest?.version ?? 0) + 1,
+          status: DocStatus.PENDING,
+          commitSha: commitSha ?? null,
+          triggeredByUserId: userId,
+          model,
+        },
+      });
+    });
+
+    if (!created) {
+      this.publishArchDoc(repositoryId, document);
+      return this.toTriggerResponse(document);
+    }
+
+    const payload: ArchitectureDraftJobPayload = {
+      repositoryId,
+      documentId: document.id,
+      userId,
+    };
+
+    try {
+      await this.architectureDraftQueue.add('draft', payload, {
+        jobId: document.id,
+        attempts: 1,
+        removeOnComplete: 100,
+        removeOnFail: 50,
+      });
+    } catch (error) {
+      await this.prisma.generatedDoc.update({
+        where: { id: document.id },
+        data: {
+          status: DocStatus.FAILED,
+          errorMessage: this.boundErrorMessage(error),
+        },
+      });
+      this.publishArchDoc(repositoryId, {
+        id: document.id,
+        status: DocStatus.FAILED,
+        errorMessage: this.boundErrorMessage(error),
+      });
+      throw error;
+    }
+
+    this.publishArchDoc(repositoryId, document);
+
+    return this.toTriggerResponse(document);
+  }
+
+  private resolveModel(): string {
+    return (
+      this.configService.get<string>('aiProvider.bedrockLlmModelStrong') ||
+      'anthropic.claude-sonnet-4-6'
+    );
+  }
+
   private async findOwnedRepository(userId: string, repositoryId: string) {
     const repository = await this.prisma.repository.findFirst({
       where: { id: repositoryId },
@@ -234,9 +336,7 @@ export class ArchitectureDocService {
     }
 
     if (repository.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not have access to this repository',
-      );
+      throw new ForbiddenException('You do not have access to this repository');
     }
 
     return repository;
@@ -284,6 +384,22 @@ export class ArchitectureDocService {
       version: document.version,
       status: document.status,
     };
+  }
+
+  private publishArchDoc(
+    repositoryId: string,
+    document: {
+      id: string;
+      status: DocStatus;
+      errorMessage?: string | null;
+    },
+  ): void {
+    this.progress.publishArchDoc(repositoryId, {
+      jobId: document.id,
+      docId: document.id,
+      status: document.status,
+      errorMessage: document.errorMessage ?? null,
+    });
   }
 
   private toDocumentResponse(document: {

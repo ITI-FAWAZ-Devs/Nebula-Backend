@@ -13,6 +13,7 @@ import graphifyConfig from './graphify.config';
 import neo4jConfig from './neo4j.config';
 import geminiConfig from './gemini.config';
 import chromaConfig from './chroma.config';
+import aiProviderConfig from './ai-provider.config';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import chromaConfig from './chroma.config';
         neo4jConfig,
         geminiConfig,
         chromaConfig,
+        aiProviderConfig,
       ],
       envFilePath: ['.env'],
     }),

@@ -4,6 +4,7 @@ import { ANALYSIS_QUEUE } from './analysis.constants';
 import { AnalysisService } from './analysis.service';
 import { AnalysisPipeline } from './analysis.pipeline';
 import { AnalysisProcessor } from './analysis.processor';
+import { ProgressModule } from '../progress/progress.module';
 import { WorkspaceModule } from '../workspace/workspace.module';
 import { GitModule } from '../git/git.module';
 import { DiscoveryModule } from '../discovery/discovery.module';
@@ -16,6 +17,7 @@ import { Neo4jModule } from '../neo4j/neo4j.module';
     BullModule.registerQueue({
       name: ANALYSIS_QUEUE,
     }),
+    ProgressModule,
     WorkspaceModule,
     GitModule,
     DiscoveryModule,

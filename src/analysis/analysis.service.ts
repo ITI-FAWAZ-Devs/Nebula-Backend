@@ -8,16 +8,15 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { AnalysisJobStatus, RepositoryStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  ANALYSIS_QUEUE,
-  AnalysisJobPayload,
-} from './analysis.constants';
+import { ProgressEventsService } from '../progress/progress-events.service';
+import { ANALYSIS_QUEUE, AnalysisJobPayload } from './analysis.constants';
 
 @Injectable()
 export class AnalysisService {
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue(ANALYSIS_QUEUE) private readonly analysisQueue: Queue,
+    private readonly progress: ProgressEventsService,
   ) {}
 
   async startAnalysis(userId: string, repositoryId: string) {
@@ -30,9 +29,7 @@ export class AnalysisService {
     }
 
     if (repository.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not have access to this repository',
-      );
+      throw new ForbiddenException('You do not have access to this repository');
     }
 
     // Prevent concurrent analysis of the same repo
@@ -58,6 +55,8 @@ export class AnalysisService {
         stage: 'queued',
       },
     });
+
+    this.progress.publishAnalysis(repositoryId, job);
 
     await this.prisma.repository.update({
       where: { id: repositoryId },
@@ -85,6 +84,13 @@ export class AnalysisService {
       data: { queueJobId: String(queueJob.id) },
     });
 
+    const withQueueJobId = await this.prisma.analysisJob.findUnique({
+      where: { id: job.id },
+    });
+    if (withQueueJobId) {
+      this.progress.publishAnalysis(repositoryId, withQueueJobId);
+    }
+
     return {
       ...job,
       queueJobId: String(queueJob.id),
@@ -101,9 +107,7 @@ export class AnalysisService {
     }
 
     if (repository.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not have access to this repository',
-      );
+      throw new ForbiddenException('You do not have access to this repository');
     }
 
     const job = await this.prisma.analysisJob.findFirst({

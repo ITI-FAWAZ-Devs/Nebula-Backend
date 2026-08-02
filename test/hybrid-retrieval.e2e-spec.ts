@@ -42,7 +42,8 @@ describe('HybridRetrieval (e2e)', () => {
           'neo4j.database': process.env.NEO4J_DATABASE || 'neo4j',
           'gemini.apiKey': process.env.GEMINI_API_KEY || '',
           'gemini.llmModel': process.env.GEMINI_LLM_MODEL || 'gemini-2.5-flash',
-          'gemini.embeddingModel': process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004',
+          'gemini.embeddingModel':
+            process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004',
         };
         return config[key];
       }),
@@ -99,9 +100,7 @@ describe('HybridRetrieval (e2e)', () => {
       },
     });
 
-    const collection = await chroma.getOrCreateCollection(
-      `repo-${REPO_ID}`,
-    );
+    const collection = await chroma.getOrCreateCollection(`repo-${REPO_ID}`);
     await collection.add({
       ids: [`${TEST_PREFIX}-seed`],
       embeddings: [[0.1, 0.2, 0.3]],

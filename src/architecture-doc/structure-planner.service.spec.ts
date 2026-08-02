@@ -1,21 +1,21 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { StructurePlannerService } from './structure-planner.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 
 describe('StructurePlannerService', () => {
   let service: StructurePlannerService;
   let hybridRetriever: HybridRetrieverService;
-  let gemini: GeminiService;
+  let aiProvider: AiProviderService;
   let prisma: PrismaService;
 
   const mockHybridRetriever = {
     retrieve: jest.fn(),
   };
 
-  const mockGemini = {
+  const mockAiProvider = {
     generateContent: jest.fn(),
   };
 
@@ -25,11 +25,30 @@ describe('StructurePlannerService', () => {
     },
   };
 
+  const llmResult = (text: string) => ({
+    text,
+    provider: 'bedrock',
+    model: 'anthropic.claude-haiku-4-5-20251001-v1:0',
+    tier: 'strong' as const,
+    latencyMs: 1,
+    fallbackOccurred: false,
+  });
+
   const mockContext: HybridRetrievalContext = {
     repositoryId: 'repo-123',
     files: [
-      { filePath: 'src/auth.ts', description: 'Auth module', evidenceSources: ['semantic'], combinedScore: 100 },
-      { filePath: 'src/user.ts', description: 'User module', evidenceSources: ['semantic'], combinedScore: 90 },
+      {
+        filePath: 'src/auth.ts',
+        description: 'Auth module',
+        evidenceSources: ['semantic'],
+        combinedScore: 100,
+      },
+      {
+        filePath: 'src/user.ts',
+        description: 'User module',
+        evidenceSources: ['semantic'],
+        combinedScore: 90,
+      },
     ],
     relationships: [],
     moduleClusters: [],
@@ -43,14 +62,16 @@ describe('StructurePlannerService', () => {
       providers: [
         StructurePlannerService,
         { provide: HybridRetrieverService, useValue: mockHybridRetriever },
-        { provide: GeminiService, useValue: mockGemini },
+        { provide: AiProviderService, useValue: mockAiProvider },
         { provide: PrismaService, useValue: mockPrisma },
       ],
     }).compile();
 
     service = module.get<StructurePlannerService>(StructurePlannerService);
-    hybridRetriever = module.get<HybridRetrieverService>(HybridRetrieverService);
-    gemini = module.get<GeminiService>(GeminiService);
+    hybridRetriever = module.get<HybridRetrieverService>(
+      HybridRetrieverService,
+    );
+    aiProvider = module.get<AiProviderService>(AiProviderService);
     prisma = module.get<PrismaService>(PrismaService);
 
     jest.clearAllMocks();
@@ -71,21 +92,23 @@ describe('StructurePlannerService', () => {
         status: 'READY',
       });
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
-      mockGemini.generateContent.mockResolvedValue(
-        JSON.stringify([
-          {
-            key: 'auth-module',
-            title: 'Authentication Module',
-            purpose: 'Handles user authentication',
-            retrievalTopic: 'authentication implementation',
-          },
-          {
-            key: 'user-management',
-            title: 'User Management',
-            purpose: 'Manages user CRUD operations',
-            retrievalTopic: 'user management',
-          },
-        ]),
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          JSON.stringify([
+            {
+              key: 'auth-module',
+              title: 'Authentication Module',
+              purpose: 'Handles user authentication',
+              retrievalTopic: 'authentication implementation',
+            },
+            {
+              key: 'user-management',
+              title: 'User Management',
+              purpose: 'Manages user CRUD operations',
+              retrievalTopic: 'user management',
+            },
+          ]),
+        ),
       );
 
       const result = await service.plan(repositoryId);
@@ -103,21 +126,23 @@ describe('StructurePlannerService', () => {
         status: 'READY',
       });
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
-      mockGemini.generateContent.mockResolvedValue(
-        JSON.stringify([
-          {
-            key: 'auth',
-            title: 'First Auth',
-            purpose: 'First',
-            retrievalTopic: 'auth',
-          },
-          {
-            key: 'auth',
-            title: 'Duplicate Auth',
-            purpose: 'Duplicate',
-            retrievalTopic: 'auth',
-          },
-        ]),
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          JSON.stringify([
+            {
+              key: 'auth',
+              title: 'First Auth',
+              purpose: 'First',
+              retrievalTopic: 'auth',
+            },
+            {
+              key: 'auth',
+              title: 'Duplicate Auth',
+              purpose: 'Duplicate',
+              retrievalTopic: 'auth',
+            },
+          ]),
+        ),
       );
 
       const result = await service.plan(repositoryId);
@@ -134,26 +159,28 @@ describe('StructurePlannerService', () => {
         status: 'READY',
       });
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
-      mockGemini.generateContent.mockResolvedValue(
-        JSON.stringify([
-          {
-            key: '',
-            title: 'Empty Key',
-            purpose: 'Purpose',
-            retrievalTopic: 'topic',
-          },
-          {
-            title: 'Missing Key',
-            purpose: 'Purpose',
-            retrievalTopic: 'topic',
-          },
-          {
-            key: 'valid',
-            title: 'Valid',
-            purpose: 'Purpose',
-            retrievalTopic: 'topic',
-          },
-        ]),
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          JSON.stringify([
+            {
+              key: '',
+              title: 'Empty Key',
+              purpose: 'Purpose',
+              retrievalTopic: 'topic',
+            },
+            {
+              title: 'Missing Key',
+              purpose: 'Purpose',
+              retrievalTopic: 'topic',
+            },
+            {
+              key: 'valid',
+              title: 'Valid',
+              purpose: 'Purpose',
+              retrievalTopic: 'topic',
+            },
+          ]),
+        ),
       );
 
       const result = await service.plan(repositoryId);
@@ -170,15 +197,17 @@ describe('StructurePlannerService', () => {
         status: 'READY',
       });
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
-      mockGemini.generateContent.mockResolvedValue(
-        JSON.stringify([
-          {
-            key: 'valid',
-            title: '',
-            purpose: 'Purpose',
-            retrievalTopic: 'topic',
-          },
-        ]),
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          JSON.stringify([
+            {
+              key: 'valid',
+              title: '',
+              purpose: 'Purpose',
+              retrievalTopic: 'topic',
+            },
+          ]),
+        ),
       );
 
       const result = await service.plan(repositoryId);
@@ -194,15 +223,17 @@ describe('StructurePlannerService', () => {
         status: 'READY',
       });
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
-      mockGemini.generateContent.mockResolvedValue(
-        JSON.stringify([
-          {
-            key: 'valid',
-            title: 'Title',
-            purpose: 'Purpose',
-            retrievalTopic: '',
-          },
-        ]),
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          JSON.stringify([
+            {
+              key: 'valid',
+              title: 'Title',
+              purpose: 'Purpose',
+              retrievalTopic: '',
+            },
+          ]),
+        ),
       );
 
       const result = await service.plan(repositoryId);
@@ -226,7 +257,7 @@ describe('StructurePlannerService', () => {
       const result = await service.plan(repositoryId);
 
       expect(result).toEqual([]);
-      expect(mockGemini.generateContent).not.toHaveBeenCalled();
+      expect(mockAiProvider.generateContent).not.toHaveBeenCalled();
     });
 
     it('should produce different key sets for different repositories', async () => {
@@ -234,7 +265,12 @@ describe('StructurePlannerService', () => {
         ...mockContext,
         repositoryId: 'repo-1',
         files: [
-          { filePath: 'src/auth.ts', description: 'Auth module', evidenceSources: ['semantic'], combinedScore: 100 },
+          {
+            filePath: 'src/auth.ts',
+            description: 'Auth module',
+            evidenceSources: ['semantic'],
+            combinedScore: 100,
+          },
         ],
       };
 
@@ -242,8 +278,18 @@ describe('StructurePlannerService', () => {
         ...mockContext,
         repositoryId: 'repo-2',
         files: [
-          { filePath: 'src/payment.ts', description: 'Payment module', evidenceSources: ['semantic'], combinedScore: 100 },
-          { filePath: 'src/billing.ts', description: 'Billing module', evidenceSources: ['semantic'], combinedScore: 90 },
+          {
+            filePath: 'src/payment.ts',
+            description: 'Payment module',
+            evidenceSources: ['semantic'],
+            combinedScore: 100,
+          },
+          {
+            filePath: 'src/billing.ts',
+            description: 'Billing module',
+            evidenceSources: ['semantic'],
+            combinedScore: 90,
+          },
         ],
       };
 
@@ -254,10 +300,17 @@ describe('StructurePlannerService', () => {
         status: 'READY',
       });
       mockHybridRetriever.retrieve.mockResolvedValue(repo1Context);
-      mockGemini.generateContent.mockResolvedValue(
-        JSON.stringify([
-          { key: 'auth-system', title: 'Auth System', purpose: 'Auth', retrievalTopic: 'auth' },
-        ]),
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          JSON.stringify([
+            {
+              key: 'auth-system',
+              title: 'Auth System',
+              purpose: 'Auth',
+              retrievalTopic: 'auth',
+            },
+          ]),
+        ),
       );
 
       const result1 = await service.plan('repo-1');
@@ -269,11 +322,23 @@ describe('StructurePlannerService', () => {
         status: 'READY',
       });
       mockHybridRetriever.retrieve.mockResolvedValue(repo2Context);
-      mockGemini.generateContent.mockResolvedValue(
-        JSON.stringify([
-          { key: 'payment-flow', title: 'Payment Flow', purpose: 'Payment', retrievalTopic: 'payment' },
-          { key: 'billing-cycle', title: 'Billing Cycle', purpose: 'Billing', retrievalTopic: 'billing' },
-        ]),
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          JSON.stringify([
+            {
+              key: 'payment-flow',
+              title: 'Payment Flow',
+              purpose: 'Payment',
+              retrievalTopic: 'payment',
+            },
+            {
+              key: 'billing-cycle',
+              title: 'Billing Cycle',
+              purpose: 'Billing',
+              retrievalTopic: 'billing',
+            },
+          ]),
+        ),
       );
 
       const result2 = await service.plan('repo-2');
@@ -308,18 +373,25 @@ describe('StructurePlannerService', () => {
         status: 'READY',
       });
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
-      mockGemini.generateContent
-        .mockResolvedValueOnce('This is not valid JSON')
+      mockAiProvider.generateContent
+        .mockResolvedValueOnce(llmResult('This is not valid JSON'))
         .mockResolvedValueOnce(
-          JSON.stringify([
-            { key: 'valid', title: 'Valid', purpose: 'Purpose', retrievalTopic: 'topic' },
-          ]),
+          llmResult(
+            JSON.stringify([
+              {
+                key: 'valid',
+                title: 'Valid',
+                purpose: 'Purpose',
+                retrievalTopic: 'topic',
+              },
+            ]),
+          ),
         );
 
       const result = await service.plan(repositoryId);
 
       expect(result).toHaveLength(1);
-      expect(mockGemini.generateContent).toHaveBeenCalledTimes(2);
+      expect(mockAiProvider.generateContent).toHaveBeenCalledTimes(2);
     });
 
     it('should fail after retry on persistent malformed JSON', async () => {
@@ -330,7 +402,9 @@ describe('StructurePlannerService', () => {
         status: 'READY',
       });
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
-      mockGemini.generateContent.mockResolvedValue('Still not valid JSON');
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult('Still not valid JSON'),
+      );
 
       await expect(service.plan(repositoryId)).rejects.toThrow();
     });

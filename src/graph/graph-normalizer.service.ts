@@ -97,8 +97,7 @@ export class GraphNormalizerService {
     if (
       FILE_EXTENSION.test(label) ||
       (sourceFile &&
-        (label === sourceFile ||
-          label === sourceFile.split(/[/\\]/).pop()))
+        (label === sourceFile || label === sourceFile.split(/[/\\]/).pop()))
     ) {
       return 'File';
     }
@@ -111,7 +110,10 @@ export class GraphNormalizerService {
       return 'Function';
     }
 
-    if (/interface/i.test(label) || label.startsWith('I') && /^I[A-Z]/.test(label)) {
+    if (
+      /interface/i.test(label) ||
+      (label.startsWith('I') && /^I[A-Z]/.test(label))
+    ) {
       return 'Interface';
     }
 

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DocStatus } from '@prisma/client';
 import { ArchitectureDocProcessor } from './architecture-doc.processor';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProgressEventsService } from '../progress/progress-events.service';
 import { DraftingOrchestratorService } from './drafting-orchestrator.service';
 import { ArchitectureDraft } from './dto/architecture-draft.dto';
 
@@ -67,6 +68,10 @@ describe('ArchitectureDocProcessor', () => {
     draft: jest.fn(),
   };
 
+  const mockProgress = {
+    publishArchDoc: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -76,6 +81,7 @@ describe('ArchitectureDocProcessor', () => {
           provide: DraftingOrchestratorService,
           useValue: mockDraftingOrchestrator,
         },
+        { provide: ProgressEventsService, useValue: mockProgress },
       ],
     }).compile();
 
@@ -204,7 +210,9 @@ describe('ArchitectureDocProcessor', () => {
 
   it('should mark document FAILED when persistence fails', async () => {
     mockDraftingOrchestrator.draft.mockResolvedValue(mockDraft);
-    mockPrisma.$transaction.mockRejectedValue(new Error('Database write failed'));
+    mockPrisma.$transaction.mockRejectedValue(
+      new Error('Database write failed'),
+    );
 
     await processor.process(createJob());
 

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { RepositoryStatus } from '@prisma/client';
+import { DocStatus, RepositoryStatus } from '@prisma/client';
 import { RepositoriesService } from './repositories.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -15,6 +15,9 @@ describe('RepositoriesService', () => {
       create: jest.fn(),
       findMany: jest.fn(),
       delete: jest.fn(),
+    },
+    generatedDoc: {
+      findMany: jest.fn(),
     },
   };
 
@@ -141,6 +144,74 @@ describe('RepositoriesService', () => {
         service.deleteImported('user-123', 'repo-123'),
       ).rejects.toThrow(NotFoundException);
       expect(mockPrisma.repository.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getArchitectureDocStatus', () => {
+    it('should mark repositories without a completed doc', async () => {
+      mockPrisma.repository.findMany.mockResolvedValue([
+        { id: 'repo-1' },
+        { id: 'repo-2' },
+      ]);
+      mockPrisma.generatedDoc.findMany.mockResolvedValue([]);
+
+      const result = await service.getArchitectureDocStatus('user-123');
+
+      expect(result).toEqual([
+        {
+          repositoryId: 'repo-1',
+          hasDoc: false,
+          version: null,
+          commitSha: null,
+        },
+        {
+          repositoryId: 'repo-2',
+          hasDoc: false,
+          version: null,
+          commitSha: null,
+        },
+      ]);
+      expect(mockPrisma.generatedDoc.findMany).toHaveBeenCalledWith({
+        where: {
+          repositoryId: { in: ['repo-1', 'repo-2'] },
+          status: DocStatus.COMPLETED,
+        },
+        orderBy: { version: 'desc' },
+        select: {
+          repositoryId: true,
+          version: true,
+          commitSha: true,
+        },
+      });
+    });
+
+    it('should pick the highest completed version per repository', async () => {
+      mockPrisma.repository.findMany.mockResolvedValue([
+        { id: 'repo-1' },
+        { id: 'repo-2' },
+      ]);
+      mockPrisma.generatedDoc.findMany.mockResolvedValue([
+        { repositoryId: 'repo-1', version: 2, commitSha: 'bbb' },
+        { repositoryId: 'repo-1', version: 1, commitSha: 'aaa' },
+        { repositoryId: 'repo-2', version: 1, commitSha: 'ccc' },
+      ]);
+
+      const result = await service.getArchitectureDocStatus('user-123');
+
+      expect(result).toEqual([
+        {
+          repositoryId: 'repo-1',
+          hasDoc: true,
+          version: 2,
+          commitSha: 'bbb',
+        },
+        {
+          repositoryId: 'repo-2',
+          hasDoc: true,
+          version: 1,
+          commitSha: 'ccc',
+        },
+      ]);
     });
   });
 });

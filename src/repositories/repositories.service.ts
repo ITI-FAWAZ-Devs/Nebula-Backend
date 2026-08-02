@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { RepositoryStatus } from '@prisma/client';
+import { DocStatus, RepositoryStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ImportRepoDto } from './dto/import-repo.dto';
 
@@ -61,6 +61,50 @@ export class RepositoriesService {
     return this.prisma.repository.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Returns, for every repository the user owns, whether a completed
+   * architecture document exists along with its latest version and commit.
+   */
+  async getArchitectureDocStatus(userId: string) {
+    const repos = await this.prisma.repository.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+
+    const repoIds = repos.map((repo) => repo.id);
+    const docs = await this.prisma.generatedDoc.findMany({
+      where: {
+        repositoryId: { in: repoIds },
+        status: DocStatus.COMPLETED,
+      },
+      orderBy: { version: 'desc' },
+      select: { repositoryId: true, version: true, commitSha: true },
+    });
+
+    const latestByRepo = new Map<
+      string,
+      { version: number; commitSha: string | null }
+    >();
+    for (const doc of docs) {
+      if (!latestByRepo.has(doc.repositoryId)) {
+        latestByRepo.set(doc.repositoryId, {
+          version: doc.version,
+          commitSha: doc.commitSha,
+        });
+      }
+    }
+
+    return repos.map((repo) => {
+      const latest = latestByRepo.get(repo.id);
+      return {
+        repositoryId: repo.id,
+        hasDoc: !!latest,
+        version: latest?.version ?? null,
+        commitSha: latest?.commitSha ?? null,
+      };
     });
   }
 
