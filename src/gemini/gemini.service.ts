@@ -39,18 +39,26 @@ export class GeminiService {
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('gemini.apiKey');
-    this.llmModelName =
+    const llmModelName =
       this.configService.get<string>('gemini.llmModel') || 'gemini-2.5-flash';
-    const embeddingModelName = this.configService.get<string>('gemini.embeddingModel') || 'gemini-embedding-001';
-    this.embeddingDimensions = this.configService.get<number>('gemini.embeddingDimensions');
+    const embeddingModelName =
+      this.configService.get<string>('gemini.embeddingModel') ||
+      'text-embedding-004';
+    this.embeddingDimensions = this.configService.get<number>(
+      'gemini.embeddingDimensions',
+    );
 
     if (!apiKey) {
       this.logger.warn('Gemini API key is not configured');
     }
 
     this.genAI = new GoogleGenerativeAI(apiKey || '');
-    this.llmModelInstance = this.genAI.getGenerativeModel({ model: this.llmModelName });
-    this.embeddingModelInstance = this.genAI.getGenerativeModel({ model: embeddingModelName });
+    this.llmModelInstance = this.genAI.getGenerativeModel({
+      model: llmModelName,
+    });
+    this.embeddingModelInstance = this.genAI.getGenerativeModel({
+      model: embeddingModelName,
+    });
   }
 
   /**
@@ -66,7 +74,9 @@ export class GeminiService {
       }
       return responseText;
     } catch (error) {
-      this.logger.error(`Failed to describe file ${filePath}: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to describe file ${filePath}: ${(error as Error).message}`,
+      );
       throw error;
     }
   }
@@ -84,7 +94,9 @@ export class GeminiService {
       }
       return responseText;
     } catch (error) {
-      this.logger.error(`Failed to answer question: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to answer question: ${(error as Error).message}`,
+      );
       throw error;
     }
   }
@@ -101,7 +113,9 @@ export class GeminiService {
       }
       return responseText;
     } catch (error) {
-      this.logger.error(`Failed to generate content: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to generate content: ${(error as Error).message}`,
+      );
       throw error;
     }
   }

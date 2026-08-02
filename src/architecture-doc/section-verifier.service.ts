@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HybridRetrieverService } from './hybrid-retriever.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { DraftSection } from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 import { buildSectionVerificationPrompt } from './templates/section-verification.prompt';
@@ -24,7 +24,7 @@ export class SectionVerifierService {
 
   constructor(
     private readonly hybridRetriever: HybridRetrieverService,
-    private readonly gemini: GeminiService,
+    private readonly aiProvider: AiProviderService,
   ) {}
 
   async verify(
@@ -33,7 +33,9 @@ export class SectionVerifierService {
     repositoryId: string,
   ): Promise<DraftSection> {
     const prompt = buildSectionVerificationPrompt(section, context);
-    const response = await this.gemini.generateContent(prompt);
+    const response = (
+      await this.aiProvider.generateContent(prompt, { tier: 'strong' })
+    ).text;
 
     const verification = await extractJsonFromLlmText<VerificationResponse>(
       response,
@@ -41,7 +43,9 @@ export class SectionVerifierService {
         if (typeof obj !== 'object' || obj === null) return false;
         const v = obj as VerificationResponse;
         return (
-          (v.verdict === 'verified' || v.verdict === 'unverified' || v.verdict === 'removed') &&
+          (v.verdict === 'verified' ||
+            v.verdict === 'unverified' ||
+            v.verdict === 'removed') &&
           (v.rewrittenBody === null || typeof v.rewrittenBody === 'string') &&
           (v.notes === null || typeof v.notes === 'string')
         );
@@ -70,20 +74,28 @@ export class SectionVerifierService {
           section,
           followUpContext,
         );
-        const followUpResponse = await this.gemini.generateContent(followUpPrompt);
+        const followUpResponse = (
+          await this.aiProvider.generateContent(followUpPrompt, {
+            tier: 'strong',
+          })
+        ).text;
 
-        const followUpVerification = await extractJsonFromLlmText<VerificationResponse>(
-          followUpResponse,
-          (obj): obj is VerificationResponse => {
-            if (typeof obj !== 'object' || obj === null) return false;
-            const v = obj as VerificationResponse;
-            return (
-              (v.verdict === 'verified' || v.verdict === 'unverified' || v.verdict === 'removed') &&
-              (v.rewrittenBody === null || typeof v.rewrittenBody === 'string') &&
-              (v.notes === null || typeof v.notes === 'string')
-            );
-          },
-        );
+        const followUpVerification =
+          await extractJsonFromLlmText<VerificationResponse>(
+            followUpResponse,
+            (obj): obj is VerificationResponse => {
+              if (typeof obj !== 'object' || obj === null) return false;
+              const v = obj as VerificationResponse;
+              return (
+                (v.verdict === 'verified' ||
+                  v.verdict === 'unverified' ||
+                  v.verdict === 'removed') &&
+                (v.rewrittenBody === null ||
+                  typeof v.rewrittenBody === 'string') &&
+                (v.notes === null || typeof v.notes === 'string')
+              );
+            },
+          );
 
         return {
           ...section,

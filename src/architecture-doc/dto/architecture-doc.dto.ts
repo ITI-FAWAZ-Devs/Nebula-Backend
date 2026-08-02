@@ -14,6 +14,20 @@ export interface ArchitectureDocTriggerResponse {
   status: DocStatus;
 }
 
+export type ArchitectureDocRegenerateResponse =
+  | {
+      needsRegeneration: true;
+      docId: string;
+      jobId: string;
+      version: number;
+      status: DocStatus;
+    }
+  | {
+      needsRegeneration: false;
+      currentCommitSha: string;
+      latestVersion: number;
+    };
+
 export interface ArchitectureDocJobResponse {
   jobId: string;
   docId: string;

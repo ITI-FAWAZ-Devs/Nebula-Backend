@@ -1,28 +1,47 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SectionGeneratorService } from './section-generator.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { SectionPlan, DraftSection } from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 
 describe('SectionGeneratorService', () => {
   let service: SectionGeneratorService;
   let hybridRetriever: HybridRetrieverService;
-  let gemini: GeminiService;
+  let aiProvider: AiProviderService;
 
   const mockHybridRetriever = {
     retrieve: jest.fn(),
   };
 
-  const mockGemini = {
+  const mockAiProvider = {
     generateContent: jest.fn(),
   };
+
+  const llmResult = (text: string) => ({
+    text,
+    provider: 'bedrock',
+    model: 'anthropic.claude-haiku-4-5-20251001-v1:0',
+    tier: 'strong' as const,
+    latencyMs: 1,
+    fallbackOccurred: false,
+  });
 
   const mockContext: HybridRetrievalContext = {
     repositoryId: 'repo-123',
     files: [
-      { filePath: 'src/auth.ts', description: 'Auth module', evidenceSources: ['semantic'], combinedScore: 100 },
-      { filePath: 'src/user.ts', description: 'User module', evidenceSources: ['semantic'], combinedScore: 90 },
+      {
+        filePath: 'src/auth.ts',
+        description: 'Auth module',
+        evidenceSources: ['semantic'],
+        combinedScore: 100,
+      },
+      {
+        filePath: 'src/user.ts',
+        description: 'User module',
+        evidenceSources: ['semantic'],
+        combinedScore: 90,
+      },
     ],
     relationships: [],
     moduleClusters: [],
@@ -43,13 +62,15 @@ describe('SectionGeneratorService', () => {
       providers: [
         SectionGeneratorService,
         { provide: HybridRetrieverService, useValue: mockHybridRetriever },
-        { provide: GeminiService, useValue: mockGemini },
+        { provide: AiProviderService, useValue: mockAiProvider },
       ],
     }).compile();
 
     service = module.get<SectionGeneratorService>(SectionGeneratorService);
-    hybridRetriever = module.get<HybridRetrieverService>(HybridRetrieverService);
-    gemini = module.get<GeminiService>(GeminiService);
+    hybridRetriever = module.get<HybridRetrieverService>(
+      HybridRetrieverService,
+    );
+    aiProvider = module.get<AiProviderService>(AiProviderService);
 
     jest.clearAllMocks();
   });
@@ -63,10 +84,12 @@ describe('SectionGeneratorService', () => {
 
     it('should generate content with inline citations', async () => {
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
-      mockGemini.generateContent.mockResolvedValue(
-        `## Authentication Module
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          `## Authentication Module
 
 The authentication module handles user login [src/auth.ts] and user registration [src/user.ts].`,
+        ),
       );
 
       const result = await service.generate(repositoryId, mockPlan);
@@ -80,10 +103,12 @@ The authentication module handles user login [src/auth.ts] and user registration
 
     it('should populate sourceFiles only from evidence paths', async () => {
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
-      mockGemini.generateContent.mockResolvedValue(
-        `## Authentication Module
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          `## Authentication Module
 
 The authentication module handles user login [src/auth.ts] and user registration [src/user.ts].`,
+        ),
       );
 
       const result = await service.generate(repositoryId, mockPlan);
@@ -95,10 +120,12 @@ The authentication module handles user login [src/auth.ts] and user registration
 
     it('should exclude citation paths absent from context', async () => {
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
-      mockGemini.generateContent.mockResolvedValue(
-        `## Authentication Module
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          `## Authentication Module
 
 The authentication module handles user login [src/auth.ts] and uses a library [src/external-lib.ts].`,
+        ),
       );
 
       const result = await service.generate(repositoryId, mockPlan);
@@ -114,8 +141,8 @@ The authentication module handles user login [src/auth.ts] and uses a library [s
         noEvidence: true,
       };
       mockHybridRetriever.retrieve.mockResolvedValue(emptyContext);
-      mockGemini.generateContent.mockResolvedValue(
-        '## Authentication Module\n\nNo evidence available.',
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult('## Authentication Module\n\nNo evidence available.'),
       );
 
       const result = await service.generate(repositoryId, mockPlan);
@@ -126,20 +153,28 @@ The authentication module handles user login [src/auth.ts] and uses a library [s
     });
 
     it('should use provided context when given', async () => {
-      mockGemini.generateContent.mockResolvedValue(
-        '## Authentication Module\n\nHandles auth [src/auth.ts].',
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult('## Authentication Module\n\nHandles auth [src/auth.ts].'),
       );
 
-      const result = await service.generate(repositoryId, mockPlan, mockContext);
+      const result = await service.generate(
+        repositoryId,
+        mockPlan,
+        mockContext,
+      );
 
       expect(mockHybridRetriever.retrieve).not.toHaveBeenCalled();
       expect(result.sourceFiles).toContain('src/auth.ts');
     });
 
     it('should fail when retrieval fails', async () => {
-      mockHybridRetriever.retrieve.mockRejectedValue(new Error('Retrieval failed'));
+      mockHybridRetriever.retrieve.mockRejectedValue(
+        new Error('Retrieval failed'),
+      );
 
-      await expect(service.generate(repositoryId, mockPlan)).rejects.toThrow('Retrieval failed');
+      await expect(service.generate(repositoryId, mockPlan)).rejects.toThrow(
+        'Retrieval failed',
+      );
     });
   });
 });

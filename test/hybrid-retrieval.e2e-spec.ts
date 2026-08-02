@@ -99,9 +99,7 @@ describe('HybridRetrieval (e2e)', () => {
       },
     });
 
-    const collection = await chroma.getOrCreateCollection(
-      `repo-${REPO_ID}`,
-    );
+    const collection = await chroma.getOrCreateCollection(`repo-${REPO_ID}`);
     await collection.add({
       ids: [`${TEST_PREFIX}-seed`],
       embeddings: [[0.1, 0.2, 0.3]],

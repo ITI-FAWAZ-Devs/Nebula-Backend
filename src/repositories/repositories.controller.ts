@@ -23,6 +23,7 @@ import { DocumentationPipeline } from './documentation.pipeline';
 import { AskService } from './ask.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProgressEventsService } from '../progress/progress-events.service';
 import { DocumentationJobStatus } from '@prisma/client';
 
 @Controller('repositories')
@@ -36,6 +37,7 @@ export class RepositoriesController {
     private readonly documentationPipeline: DocumentationPipeline,
     private readonly askService: AskService,
     private readonly prisma: PrismaService,
+    private readonly progress: ProgressEventsService,
   ) {}
 
   /**
@@ -116,6 +118,21 @@ export class RepositoriesController {
       success: true,
       message: 'Imported repositories retrieved successfully',
       data: repos,
+    };
+  }
+
+  /**
+   * GET /repositories/architecture-doc/status
+   * Reports, per imported repository, whether a completed architecture document exists.
+   */
+  @Get('architecture-doc/status')
+  async getArchitectureDocStatus(@CurrentUser('id') userId: string) {
+    const data =
+      await this.repositoriesService.getArchitectureDocStatus(userId);
+    return {
+      success: true,
+      message: 'Architecture document status retrieved successfully',
+      data,
     };
   }
 
@@ -205,9 +222,7 @@ export class RepositoriesController {
     }
 
     if (repository.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not have access to this repository',
-      );
+      throw new ForbiddenException('You do not have access to this repository');
     }
 
     // Prevent concurrent documentation jobs
@@ -234,9 +249,13 @@ export class RepositoriesController {
       },
     });
 
+    this.progress.publishDocumentation(id, job);
+
     // Run in the background
     this.documentationPipeline.execute(id, job.id, userId).catch((err) => {
-      this.logger.error(`Background documentation job ${job.id} failed: ${err.message}`);
+      this.logger.error(
+        `Background documentation job ${job.id} failed: ${err.message}`,
+      );
     });
 
     return {
@@ -264,9 +283,7 @@ export class RepositoriesController {
     }
 
     if (repository.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not have access to this repository',
-      );
+      throw new ForbiddenException('You do not have access to this repository');
     }
 
     const job = await this.prisma.documentationJob.findFirst({
@@ -306,9 +323,7 @@ export class RepositoriesController {
     }
 
     if (repository.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not have access to this repository',
-      );
+      throw new ForbiddenException('You do not have access to this repository');
     }
 
     const result = await this.askService.ask(id, dto.question);

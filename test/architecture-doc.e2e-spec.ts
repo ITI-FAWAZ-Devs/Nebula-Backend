@@ -20,6 +20,7 @@ import { DraftingOrchestratorService } from '../src/architecture-doc/drafting-or
 import { ARCHITECTURE_DRAFT_QUEUE } from '../src/architecture-doc/architecture-doc.constants';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { GithubClientService } from '../src/repositories/github-client.service';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
 
 const TEST_PREFIX = `e2e-archdoc-${Date.now()}`;
@@ -131,6 +132,14 @@ describe('ArchitectureDoc (e2e)', () => {
         DraftingOrchestratorService,
         { provide: PrismaService, useValue: prisma },
         {
+          provide: GithubClientService,
+          useValue: {
+            getLatestCommitSha: jest.fn(
+              async () => `head-${Date.now()}-${Math.random()}`,
+            ),
+          },
+        },
+        {
           provide: ConfigService,
           useValue: {
             get: (key: string) =>
@@ -172,7 +181,7 @@ describe('ArchitectureDoc (e2e)', () => {
         req.user = { id: currentUserId };
         return true;
       },
-    } as CanActivate);
+    });
     await app.init();
 
     processor = moduleFixture.get<ArchitectureDocProcessor>(
@@ -276,9 +285,7 @@ describe('ArchitectureDoc (e2e)', () => {
 
     currentUserId = OWNER_ID;
 
-    const draftingOrchestrator = app.get(DraftingOrchestratorService) as {
-      draft: jest.Mock;
-    };
+    const draftingOrchestrator = app.get(DraftingOrchestratorService);
     draftingOrchestrator.draft = failingDraft;
 
     const triggerResponse = await request(app.getHttpServer())
@@ -307,9 +314,7 @@ describe('ArchitectureDoc (e2e)', () => {
 
     currentUserId = OWNER_ID;
 
-    const draftingOrchestrator = app.get(DraftingOrchestratorService) as {
-      draft: jest.Mock;
-    };
+    const draftingOrchestrator = app.get(DraftingOrchestratorService);
     draftingOrchestrator.draft = jest.fn(async (_request, onProgress) => {
       await onProgress?.('GENERATING');
       await onProgress?.('VERIFYING');
@@ -339,6 +344,31 @@ describe('ArchitectureDoc (e2e)', () => {
       .expect(200);
 
     expect(latestResponse.body.data.version).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should report no changes when current commit matches latest document', async () => {
+    if (!shouldRun()) {
+      return;
+    }
+
+    currentUserId = OWNER_ID;
+
+    const githubClient = app.get(GithubClientService);
+    const latestCompleted = await prisma.generatedDoc.findFirst({
+      where: { repositoryId: REPO_ID, status: DocStatus.COMPLETED },
+      orderBy: { version: 'desc' },
+    });
+    (githubClient.getLatestCommitSha as jest.Mock).mockResolvedValue(
+      latestCompleted?.commitSha ?? null,
+    );
+
+    const response = await request(app.getHttpServer())
+      .post(`/repositories/${REPO_ID}/architecture-doc/regenerate`)
+      .send({})
+      .expect(202);
+
+    expect(response.body.data.needsRegeneration).toBe(false);
+    expect(response.body.message).toBe('No new changes to regenerate');
   });
 
   it('should deny non-owner trigger, poll, fetch, and history requests', async () => {

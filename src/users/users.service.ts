@@ -46,10 +46,14 @@ export class UsersService {
         createData.accounts.create = {
           ...createData.accounts.create,
           accessToken: createData.accounts.create.accessToken
-            ? this.encryptionService.encrypt(createData.accounts.create.accessToken)
+            ? this.encryptionService.encrypt(
+                createData.accounts.create.accessToken,
+              )
             : createData.accounts.create.accessToken,
           refreshToken: createData.accounts.create.refreshToken
-            ? this.encryptionService.encrypt(createData.accounts.create.refreshToken)
+            ? this.encryptionService.encrypt(
+                createData.accounts.create.refreshToken,
+              )
             : createData.accounts.create.refreshToken,
         };
       }

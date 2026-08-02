@@ -6,7 +6,12 @@ import { SectionVerifierService } from './section-verifier.service';
 import { DiagramGeneratorService } from './diagram-generator.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
 import { DocStatus } from '@prisma/client';
-import { DraftRequest, ArchitectureDraft, DraftSection, ArchitectureDiagram } from './dto/architecture-draft.dto';
+import {
+  DraftRequest,
+  ArchitectureDraft,
+  DraftSection,
+  ArchitectureDiagram,
+} from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 
 export type DraftProgressReporter = (status: DocStatus) => void | Promise<void>;
@@ -50,7 +55,9 @@ export class DraftingOrchestratorService {
       );
     }
 
-    this.logger.log(`[${repositoryId}] Starting draft for "${repository.name}"`);
+    this.logger.log(
+      `[${repositoryId}] Starting draft for "${repository.name}"`,
+    );
 
     await onProgress?.('RETRIEVING');
     this.logger.log(`[${repositoryId}] Retrieving broad context...`);
@@ -66,13 +73,19 @@ export class DraftingOrchestratorService {
     this.logger.log(`[${repositoryId}] Planning sections...`);
     const sectionPlan = await this.structurePlanner.plan(repositoryId);
 
-    this.logger.log(`[${repositoryId}] Section plan: ${sectionPlan.length} sections planned`);
+    this.logger.log(
+      `[${repositoryId}] Section plan: ${sectionPlan.length} sections planned`,
+    );
     sectionPlan.forEach((p) => {
-      this.logger.log(`[${repositoryId}]   - ${p.key}: "${p.title}" (topic: ${p.retrievalTopic})`);
+      this.logger.log(
+        `[${repositoryId}]   - ${p.key}: "${p.title}" (topic: ${p.retrievalTopic})`,
+      );
     });
 
     if (sectionPlan.length === 0) {
-      this.logger.warn(`[${repositoryId}] No sections planned — returning empty draft`);
+      this.logger.warn(
+        `[${repositoryId}] No sections planned — returning empty draft`,
+      );
       return {
         repositoryId,
         repositoryName: repository.name,

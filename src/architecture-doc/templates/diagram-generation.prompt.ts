@@ -1,4 +1,7 @@
-import { FileRelationship, ModuleCluster } from '../dto/hybrid-retrieval-context.dto';
+import {
+  FileRelationship,
+  ModuleCluster,
+} from '../dto/hybrid-retrieval-context.dto';
 import { DraftSection } from '../dto/architecture-draft.dto';
 
 export function buildDiagramGenerationPrompt(

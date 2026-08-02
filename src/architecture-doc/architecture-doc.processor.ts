@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { DocStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProgressEventsService } from '../progress/progress-events.service';
 import {
   ARCHITECTURE_DRAFT_QUEUE,
   ArchitectureDraftJobPayload,
@@ -25,6 +26,7 @@ export class ArchitectureDocProcessor extends WorkerHost {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly progress: ProgressEventsService,
     private readonly draftingOrchestrator: DraftingOrchestratorService,
     private readonly embedder: ArchitectureDocEmbedderService,
   ) {
@@ -38,14 +40,14 @@ export class ArchitectureDocProcessor extends WorkerHost {
     );
 
     try {
-      await this.updateStatus(documentId, DocStatus.RETRIEVING);
+      await this.updateStatus(repositoryId, documentId, DocStatus.RETRIEVING);
 
       this.logger.log(`[${documentId}] Calling drafting orchestrator...`);
       const draft = await this.draftingOrchestrator.draft(
         { repositoryId },
         async (status) => {
           this.logger.log(`[${documentId}] Progress: ${status}`);
-          await this.updateStatusMonotonic(documentId, status);
+          await this.updateStatusMonotonic(repositoryId, documentId, status);
         },
       );
 
@@ -157,10 +159,17 @@ export class ArchitectureDocProcessor extends WorkerHost {
           errorMessage: this.boundErrorMessage(error),
         },
       });
+      this.publishProgress(
+        repositoryId,
+        documentId,
+        DocStatus.FAILED,
+        this.boundErrorMessage(error),
+      );
     }
   }
 
   private async updateStatus(
+    repositoryId: string,
     documentId: string,
     status: DocStatus,
   ): Promise<void> {
@@ -168,9 +177,11 @@ export class ArchitectureDocProcessor extends WorkerHost {
       where: { id: documentId },
       data: { status },
     });
+    this.publishProgress(repositoryId, documentId, status, null);
   }
 
   private async updateStatusMonotonic(
+    repositoryId: string,
     documentId: string,
     status: DocStatus,
   ): Promise<void> {
@@ -190,7 +201,21 @@ export class ArchitectureDocProcessor extends WorkerHost {
       return;
     }
 
-    await this.updateStatus(documentId, status);
+    await this.updateStatus(repositoryId, documentId, status);
+  }
+
+  private publishProgress(
+    repositoryId: string,
+    documentId: string,
+    status: DocStatus,
+    errorMessage: string | null,
+  ): void {
+    this.progress.publishArchDoc(repositoryId, {
+      jobId: documentId,
+      docId: documentId,
+      status,
+      errorMessage,
+    });
   }
 
   private boundErrorMessage(error: unknown): string {

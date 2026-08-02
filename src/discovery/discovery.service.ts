@@ -79,8 +79,7 @@ export class DiscoveryService {
     const deps = {
       ...(opts.packageJson.dependencies as Record<string, string> | undefined),
       ...(opts.packageJson.devDependencies as
-        | Record<string, string>
-        | undefined),
+        Record<string, string> | undefined),
     };
 
     if (deps['@nestjs/core']) return 'NestJS';
@@ -104,8 +103,7 @@ export class DiscoveryService {
     const deps = {
       ...(opts.packageJson.dependencies as Record<string, string> | undefined),
       ...(opts.packageJson.devDependencies as
-        | Record<string, string>
-        | undefined),
+        Record<string, string> | undefined),
     };
 
     if (deps['typescript']) return 'TypeScript';

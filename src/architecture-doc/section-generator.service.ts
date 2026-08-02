@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HybridRetrieverService } from './hybrid-retriever.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { SectionPlan, DraftSection } from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 import { buildSectionGenerationPrompt } from './templates/section-generation.prompt';
@@ -17,7 +17,7 @@ export class SectionGeneratorService {
 
   constructor(
     private readonly hybridRetriever: HybridRetrieverService,
-    private readonly gemini: GeminiService,
+    private readonly aiProvider: AiProviderService,
   ) {}
 
   async generate(
@@ -32,7 +32,9 @@ export class SectionGeneratorService {
       }));
 
     const prompt = buildSectionGenerationPrompt(plan, retrievalContext);
-    const response = await this.gemini.generateContent(prompt);
+    const response = (
+      await this.aiProvider.generateContent(prompt, { tier: 'strong' })
+    ).text;
 
     const sourceFiles = this.extractCitations(response, retrievalContext);
 

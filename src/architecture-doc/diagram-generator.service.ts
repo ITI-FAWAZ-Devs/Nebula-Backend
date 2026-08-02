@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { GeminiService } from '../gemini/gemini.service';
-import { FileRelationship, ModuleCluster } from './dto/hybrid-retrieval-context.dto';
-import { DraftSection, ArchitectureDiagram } from './dto/architecture-draft.dto';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
+import {
+  FileRelationship,
+  ModuleCluster,
+} from './dto/hybrid-retrieval-context.dto';
+import {
+  DraftSection,
+  ArchitectureDiagram,
+} from './dto/architecture-draft.dto';
 import { buildDiagramGenerationPrompt } from './templates/diagram-generation.prompt';
 
 /**
@@ -14,7 +20,7 @@ import { buildDiagramGenerationPrompt } from './templates/diagram-generation.pro
 export class DiagramGeneratorService {
   private readonly logger = new Logger(DiagramGeneratorService.name);
 
-  constructor(private readonly gemini: GeminiService) {}
+  constructor(private readonly aiProvider: AiProviderService) {}
 
   async generate(
     relationships: FileRelationship[],
@@ -25,22 +31,34 @@ export class DiagramGeneratorService {
       return null;
     }
 
-    const prompt = buildDiagramGenerationPrompt(relationships, clusters, sections);
-    const response = await this.gemini.generateContent(prompt);
+    const prompt = buildDiagramGenerationPrompt(
+      relationships,
+      clusters,
+      sections,
+    );
+    const response = (
+      await this.aiProvider.generateContent(prompt, { tier: 'strong' })
+    ).text;
 
     if (!this.isValidMermaid(response)) {
       return null;
     }
 
     const modules = this.extractModules(response, clusters);
-    const validatedModules = this.validateModules(modules, clusters, relationships);
+    const validatedModules = this.validateModules(
+      modules,
+      clusters,
+      relationships,
+    );
 
     return {
       mermaidSource: response.trim(),
       modules: validatedModules,
       verdict: validatedModules.length > 0 ? 'verified' : 'unverified',
       verificationNotes:
-        validatedModules.length === 0 ? 'No evidenced modules found in diagram' : null,
+        validatedModules.length === 0
+          ? 'No evidenced modules found in diagram'
+          : null,
     };
   }
 
@@ -49,10 +67,7 @@ export class DiagramGeneratorService {
     return trimmed.startsWith('flowchart') || trimmed.startsWith('graph');
   }
 
-  private extractModules(
-    mermaid: string,
-    clusters: ModuleCluster[],
-  ): string[] {
+  private extractModules(mermaid: string, clusters: ModuleCluster[]): string[] {
     const modules = new Set<string>();
 
     for (const cluster of clusters) {

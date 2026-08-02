@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
@@ -12,6 +13,8 @@ import { MailModule } from './mail/mail.module';
 import { RepositoriesModule } from './repositories/repositories.module';
 import { AnalysisModule } from './analysis/analysis.module';
 import { ArchitectureDocModule } from './architecture-doc/architecture-doc.module';
+import { AiProviderModule } from './ai-provider/ai-provider.module';
+import { ProgressModule } from './progress/progress.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { AgentRagModule } from './agent-rag/agent-rag.module';
@@ -22,6 +25,7 @@ import { AppService } from './app.service';
 @Module({
   imports: [
     ConfigModule,
+    EventEmitterModule.forRoot(),
     PrismaModule,
     RedisModule,
     BullModule.forRootAsync({
@@ -46,6 +50,8 @@ import { AppService } from './app.service';
     RepositoriesModule,
     AnalysisModule,
     ArchitectureDocModule,
+    ProgressModule,
+    AiProviderModule,
     IntegrationsModule,
     OrganizationsModule,
     AgentRagModule,

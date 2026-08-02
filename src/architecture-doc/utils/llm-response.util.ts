@@ -47,10 +47,7 @@ function parseJsonFromText(text: string): unknown {
 export function validateSectionPlanArray(obj: unknown): obj is SectionPlan[] {
   if (!Array.isArray(obj)) return false;
   return obj.every(
-    (item) =>
-      typeof item === 'object' &&
-      item !== null &&
-      !Array.isArray(item),
+    (item) => typeof item === 'object' && item !== null && !Array.isArray(item),
   );
 }
 

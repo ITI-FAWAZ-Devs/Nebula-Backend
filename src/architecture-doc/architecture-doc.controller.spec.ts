@@ -18,6 +18,7 @@ describe('ArchitectureDocController', () => {
 
   const mockService = {
     start: jest.fn(),
+    regenerate: jest.fn(),
     getLatestCompleted: jest.fn(),
     getJob: jest.fn(),
     listVersions: jest.fn(),
@@ -30,7 +31,9 @@ describe('ArchitectureDocController', () => {
       providers: [{ provide: ArchitectureDocService, useValue: mockService }],
     }).compile();
 
-    controller = module.get<ArchitectureDocController>(ArchitectureDocController);
+    controller = module.get<ArchitectureDocController>(
+      ArchitectureDocController,
+    );
     jest.clearAllMocks();
   });
 
@@ -57,9 +60,9 @@ describe('ArchitectureDocController', () => {
     it('should propagate service errors such as forbidden access', async () => {
       mockService.start.mockRejectedValue(new ForbiddenException());
 
-      await expect(controller.trigger(otherUserId, repositoryId, {})).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        controller.trigger(otherUserId, repositoryId, {}),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('should propagate bad request for invalid commit', async () => {
@@ -88,7 +91,8 @@ describe('ArchitectureDocController', () => {
 
       expect(result).toEqual({
         success: true,
-        message: 'Latest completed architecture document retrieved successfully',
+        message:
+          'Latest completed architecture document retrieved successfully',
         data: document,
       });
     });
@@ -188,22 +192,40 @@ describe('ArchitectureDocController', () => {
   });
 
   describe('POST /repositories/:repositoryId/architecture-doc/regenerate', () => {
-    it('should accept regeneration with same envelope as trigger', async () => {
-      const triggerData = {
+    it('should accept regeneration with regeneration data in envelope', async () => {
+      const regenerateData = {
+        needsRegeneration: true,
         docId: jobId,
         jobId,
         version: 2,
         status: DocStatus.PENDING,
       };
-      mockService.start.mockResolvedValue(triggerData);
+      mockService.regenerate.mockResolvedValue(regenerateData);
 
-      const result = await controller.regenerate(userId, repositoryId, {});
+      const result = await controller.regenerate(userId, repositoryId);
 
-      expect(mockService.start).toHaveBeenCalledWith(userId, repositoryId, {});
+      expect(mockService.regenerate).toHaveBeenCalledWith(userId, repositoryId);
       expect(result).toEqual({
         success: true,
         message: 'Architecture document regeneration accepted',
-        data: triggerData,
+        data: regenerateData,
+      });
+    });
+
+    it('should surface no-changes outcome with a friendly message', async () => {
+      const regenerateData = {
+        needsRegeneration: false,
+        currentCommitSha: 'abc123',
+        latestVersion: 2,
+      };
+      mockService.regenerate.mockResolvedValue(regenerateData);
+
+      const result = await controller.regenerate(userId, repositoryId);
+
+      expect(result).toEqual({
+        success: true,
+        message: 'No new changes to regenerate',
+        data: regenerateData,
       });
     });
   });

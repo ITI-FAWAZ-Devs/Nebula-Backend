@@ -6,10 +6,15 @@ import { SectionVerifierService } from '../src/architecture-doc/section-verifier
 import { DiagramGeneratorService } from '../src/architecture-doc/diagram-generator.service';
 import { HybridRetrieverService } from '../src/architecture-doc/hybrid-retriever.service';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { GeminiService } from '../src/gemini/gemini.service';
-import { minimalRepoFiles, minimalRepoRelationships, minimalRepoClusters } from './drafting-pipeline/minimal-repo';
+import { AiProviderService } from '../src/ai-provider/ai-provider.service';
+import {
+  minimalRepoFiles,
+  minimalRepoRelationships,
+  minimalRepoClusters,
+} from './drafting-pipeline/minimal-repo';
 
-const RUN_INTEGRATION = process.env.RUN_DRAFTING_PIPELINE_INTEGRATION === 'true';
+const RUN_INTEGRATION =
+  process.env.RUN_DRAFTING_PIPELINE_INTEGRATION === 'true';
 
 describe('Drafting Pipeline Integration', () => {
   let orchestrator: DraftingOrchestratorService;
@@ -24,9 +29,19 @@ describe('Drafting Pipeline Integration', () => {
     retrieve: jest.fn(),
   };
 
-  const mockGemini = {
+  const aiLlmResult = (text: string) => ({
+    text,
+    model: 'gemini-model',
+    tier: 'strong',
+    provider: 'gemini',
+    latencyMs: 0,
+    fallbackOccurred: false,
+  });
+
+  const mockAiProvider = {
     generateContent: jest.fn(),
     embedString: jest.fn(),
+    embedMany: jest.fn(),
   };
 
   const repositoryId = 'integration-test-repo';
@@ -45,11 +60,13 @@ describe('Drafting Pipeline Integration', () => {
         DiagramGeneratorService,
         { provide: HybridRetrieverService, useValue: mockHybridRetriever },
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: GeminiService, useValue: mockGemini },
+        { provide: AiProviderService, useValue: mockAiProvider },
       ],
     }).compile();
 
-    orchestrator = module.get<DraftingOrchestratorService>(DraftingOrchestratorService);
+    orchestrator = module.get<DraftingOrchestratorService>(
+      DraftingOrchestratorService,
+    );
 
     mockPrisma.repository.findUnique.mockResolvedValue({
       id: repositoryId,
@@ -72,35 +89,45 @@ describe('Drafting Pipeline Integration', () => {
       noEvidence: false,
     });
 
-    mockGemini.generateContent
+    mockAiProvider.generateContent
       .mockResolvedValueOnce(
-        JSON.stringify([
-          {
-            key: 'overview',
-            title: 'Application Overview',
-            purpose: 'High-level overview of the application',
-            retrievalTopic: 'application entry point and module structure',
-          },
-        ]),
+        aiLlmResult(
+          JSON.stringify([
+            {
+              key: 'overview',
+              title: 'Application Overview',
+              purpose: 'High-level overview of the application',
+              retrievalTopic: 'application entry point and module structure',
+            },
+          ]),
+        ),
       )
       .mockResolvedValueOnce(
-        '## Application Overview\n\nThe application bootstraps in [src/main.ts] using [src/app.module.ts].',
+        aiLlmResult(
+          '## Application Overview\n\nThe application bootstraps in [src/main.ts] using [src/app.module.ts].',
+        ),
       )
       .mockResolvedValueOnce(
-        JSON.stringify({
-          verdict: 'verified',
-          rewrittenBody: null,
-          notes: null,
-        }),
+        aiLlmResult(
+          JSON.stringify({
+            verdict: 'verified',
+            rewrittenBody: null,
+            notes: null,
+          }),
+        ),
       )
       .mockResolvedValueOnce(
-        'flowchart TD\n    A[main.ts] --> B[app.module.ts]\n    B --> C[app.service.ts]',
+        aiLlmResult(
+          'flowchart TD\n    A[main.ts] --> B[app.module.ts]\n    B --> C[app.service.ts]',
+        ),
       );
   });
 
   it('should produce a grounded draft with citations', async () => {
     if (!RUN_INTEGRATION) {
-      console.log('Skipping integration test: RUN_DRAFTING_PIPELINE_INTEGRATION not set');
+      console.log(
+        'Skipping integration test: RUN_DRAFTING_PIPELINE_INTEGRATION not set',
+      );
       return;
     }
 
@@ -118,7 +145,9 @@ describe('Drafting Pipeline Integration', () => {
 
   it('should catch seeded hallucination', async () => {
     if (!RUN_INTEGRATION) {
-      console.log('Skipping integration test: RUN_DRAFTING_PIPELINE_INTEGRATION not set');
+      console.log(
+        'Skipping integration test: RUN_DRAFTING_PIPELINE_INTEGRATION not set',
+      );
       return;
     }
 
@@ -133,7 +162,9 @@ describe('Drafting Pipeline Integration', () => {
 
   it('should produce a valid diagram when evidence is present', async () => {
     if (!RUN_INTEGRATION) {
-      console.log('Skipping integration test: RUN_DRAFTING_PIPELINE_INTEGRATION not set');
+      console.log(
+        'Skipping integration test: RUN_DRAFTING_PIPELINE_INTEGRATION not set',
+      );
       return;
     }
 

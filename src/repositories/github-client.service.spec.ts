@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
   UnauthorizedException,
+  NotFoundException,
   HttpException,
 } from '@nestjs/common';
 import { AuthProvider } from '@prisma/client';
@@ -205,6 +206,96 @@ describe('GithubClientService', () => {
       await expect(service.getRepositories('user-123', true)).rejects.toThrow(
         HttpException,
       );
+    });
+  });
+
+  describe('getLatestCommitSha', () => {
+    it('should throw BadRequestException if GITHUB account is not linked', async () => {
+      mockUsersService.findAccountByUserAndProvider.mockResolvedValue(null);
+
+      await expect(
+        service.getLatestCommitSha('user-123', 'owner-1', 'repo-1', 'main'),
+      ).rejects.toThrow(BadRequestException);
+      expect(
+        mockUsersService.findAccountByUserAndProvider,
+      ).toHaveBeenCalledWith('user-123', AuthProvider.GITHUB);
+    });
+
+    it('should return the head commit sha from the GitHub API', async () => {
+      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
+        accessToken: 'mock-token',
+      });
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({ sha: 'abc123' }),
+      });
+
+      const sha = await service.getLatestCommitSha(
+        'user-123',
+        'owner-1',
+        'repo-1',
+        'main',
+      );
+
+      expect(sha).toBe('abc123');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://api.github.com/repos/owner-1/repo-1/commits/main',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer mock-token',
+          }),
+        }),
+      );
+    });
+
+    it('should throw UnauthorizedException if GitHub token is invalid (401)', async () => {
+      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
+        accessToken: 'invalid-token',
+      });
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: jest.fn().mockResolvedValue({ message: 'Bad credentials' }),
+      });
+
+      await expect(
+        service.getLatestCommitSha('user-123', 'owner-1', 'repo-1', 'main'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw NotFoundException if repository is missing (404)', async () => {
+      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
+        accessToken: 'token',
+      });
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: jest.fn().mockResolvedValue({ message: 'Not Found' }),
+      });
+
+      await expect(
+        service.getLatestCommitSha('user-123', 'owner-1', 'repo-1', 'main'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw HttpException for other API errors', async () => {
+      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
+        accessToken: 'token',
+      });
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: jest.fn().mockResolvedValue({ message: 'Internal error' }),
+      });
+
+      await expect(
+        service.getLatestCommitSha('user-123', 'owner-1', 'repo-1', 'main'),
+      ).rejects.toThrow(HttpException);
     });
   });
 });

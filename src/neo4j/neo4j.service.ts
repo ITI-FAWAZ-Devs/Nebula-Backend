@@ -67,8 +67,7 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
   private readonly database: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.database =
-      this.configService.get<string>('neo4j.database') || 'neo4j';
+    this.database = this.configService.get<string>('neo4j.database') || 'neo4j';
   }
 
   async onModuleInit(): Promise<void> {
@@ -179,8 +178,10 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
 
       if (result.records.length > 0) {
         const record = result.records[0];
-        const rawNodes = record.get('nodes') as Array<Record<string, unknown>> || [];
-        const rawEdges = record.get('edges') as Array<Record<string, unknown>> || [];
+        const rawNodes =
+          (record.get('nodes') as Array<Record<string, unknown>>) || [];
+        const rawEdges =
+          (record.get('edges') as Array<Record<string, unknown>>) || [];
 
         for (const n of rawNodes) {
           const fp = n.filePath as string;
@@ -219,10 +220,10 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
     const session = this.getSession();
     try {
       const label = node.labels[0] || 'Entity';
-      await session.run(
-        `MERGE (n:${label} {id: $id}) SET n += $properties`,
-        { id: node.id, properties: node.properties },
-      );
+      await session.run(`MERGE (n:${label} {id: $id}) SET n += $properties`, {
+        id: node.id,
+        properties: node.properties,
+      });
     } finally {
       await session.close();
     }
@@ -255,10 +256,9 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
 
     try {
       // Clear previous graph for this repository
-      await tx.run(
-        `MATCH (n {repositoryId: $repositoryId}) DETACH DELETE n`,
-        { repositoryId: graph.repositoryId },
-      );
+      await tx.run(`MATCH (n {repositoryId: $repositoryId}) DETACH DELETE n`, {
+        repositoryId: graph.repositoryId,
+      });
 
       // Batch insert nodes grouped by label
       const byLabel = new Map<string, GraphNode[]>();
@@ -318,9 +318,7 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (error) {
       await tx.rollback();
-      this.logger.error(
-        `Failed to save graph: ${(error as Error).message}`,
-      );
+      this.logger.error(`Failed to save graph: ${(error as Error).message}`);
       throw error;
     } finally {
       await session.close();

@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
-import { GeminiModule } from '../gemini/gemini.module';
+import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { ChromaModule } from '../chroma/chroma.module';
 import { Neo4jModule } from '../neo4j/neo4j.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ProgressModule } from '../progress/progress.module';
+import { RepositoriesModule } from '../repositories/repositories.module';
 import { HybridRetrieverService } from './hybrid-retriever.service';
 import { StructurePlannerService } from './structure-planner.service';
 import { SectionGeneratorService } from './section-generator.service';
@@ -23,10 +25,12 @@ import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.serv
     BullModule.registerQueue({
       name: ARCHITECTURE_DRAFT_QUEUE,
     }),
-    GeminiModule,
+    AiProviderModule,
     ChromaModule,
     Neo4jModule,
     PrismaModule,
+    ProgressModule,
+    RepositoriesModule,
   ],
   controllers: [ArchitectureDocController],
   providers: [

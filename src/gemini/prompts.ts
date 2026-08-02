@@ -1,7 +1,10 @@
 /**
  * Builds the prompt for describing a file's contents.
  */
-export function buildFileDescriptionPrompt(filePath: string, content: string): string {
+export function buildFileDescriptionPrompt(
+  filePath: string,
+  content: string,
+): string {
   return `You are a technical documentation AI. Analyze the following source file and generate a detailed documentation write-up.
 File Path: ${filePath}
 
@@ -22,7 +25,10 @@ Keep your response structured, concise, and professional.`;
 /**
  * Builds the prompt for answering a user question given code documentation context.
  */
-export function buildAnswerQuestionPrompt(question: string, context: string): string {
+export function buildAnswerQuestionPrompt(
+  question: string,
+  context: string,
+): string {
   return `You are an expert AI assistant answering questions about a codebase.
 Use the following block of retrieved code documentation as context to answer the user's question.
 

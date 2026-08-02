@@ -41,7 +41,9 @@ describe('Neo4jService', () => {
       .overrideProvider(Neo4jService)
       .useFactory({
         factory: () => {
-          const svc = new Neo4jService(mockConfigService as unknown as ConfigService);
+          const svc = new Neo4jService(
+            mockConfigService as unknown as ConfigService,
+          );
           (svc as any).driver = mockDriver;
           return svc;
         },
