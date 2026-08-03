@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { GeminiService } from '../gemini/gemini.service';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { ChromaService } from '../chroma/chroma.service';
 import { ArchitectureDocEmbeddingPayload } from './dto/architecture-doc-embedding.dto';
 
@@ -10,12 +10,13 @@ export class ArchitectureDocEmbedderService {
   private readonly logger = new Logger(ArchitectureDocEmbedderService.name);
 
   constructor(
-    private readonly geminiService: GeminiService,
+    private readonly aiProvider: AiProviderService,
     private readonly chromaService: ChromaService,
   ) {}
 
   /**
-   * Embeds sections of an Architecture Specification Document into ChromaDB using Gemini Embeddings.
+   * Embeds sections of an Architecture Specification Document into ChromaDB
+   * via the shared AiProvider embedding chain.
    *
    * @param payload Document payload containing docId, version, commitSha, and sections.
    */
@@ -48,11 +49,15 @@ export class ArchitectureDocEmbedderService {
         const textToEmbed = `# ${section.title}\n\n${section.contentMd}`;
         const recordId = `${docId}_${section.key}`;
 
-        // 2. Generate embedding vector via Gemini
+        // 2. Generate embedding vector via the AI provider chain
         this.logger.log(
           `[Doc ${docId}] Generating embedding for section '${section.key}'...`,
         );
-        const embedding = await this.geminiService.embedString(textToEmbed);
+        const embedResult = await this.aiProvider.embedString(
+          textToEmbed,
+          'search_document',
+        );
+        const embedding = embedResult.embedding;
 
         // 3. Construct structured metadata & chunk
         chunksToUpsert.push({

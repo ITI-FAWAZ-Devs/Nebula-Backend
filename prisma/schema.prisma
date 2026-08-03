@@ -279,7 +279,9 @@ model DocumentationJob {
   repositoryId String
   status       DocumentationJobStatus @default(PENDING)
   stage        String?
+  progress     Int?
   error        String?
+  queueJobId   String?
   startedAt    DateTime?
   finishedAt   DateTime?
   createdAt    DateTime               @default(now())

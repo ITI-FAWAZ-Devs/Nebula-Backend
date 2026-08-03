@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
+import { CodeContextLoaderService } from './code-context-loader.service';
 import { SectionPlan } from './dto/architecture-draft.dto';
 import { buildStructurePlanPrompt } from './templates/structure-plan.prompt';
 import {
@@ -23,9 +24,13 @@ export class StructurePlannerService {
     private readonly prisma: PrismaService,
     private readonly aiProvider: AiProviderService,
     private readonly hybridRetriever: HybridRetrieverService,
+    private readonly codeContextLoader: CodeContextLoaderService,
   ) {}
 
-  async plan(repositoryId: string): Promise<SectionPlan[]> {
+  async plan(
+    repositoryId: string,
+    codeRootPath?: string | null,
+  ): Promise<SectionPlan[]> {
     const repository = await this.prisma.repository.findUnique({
       where: { id: repositoryId },
     });
@@ -48,10 +53,15 @@ export class StructurePlannerService {
       return [];
     }
 
+    const enrichedContext = await this.codeContextLoader.enrich(
+      context,
+      codeRootPath ?? null,
+    );
+
     const prompt = buildStructurePlanPrompt(
       repository.name,
       repository.owner || 'unknown',
-      context,
+      enrichedContext,
     );
 
     let response: string;

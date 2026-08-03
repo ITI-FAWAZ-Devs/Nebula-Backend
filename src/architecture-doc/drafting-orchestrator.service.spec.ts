@@ -5,6 +5,7 @@ import { SectionGeneratorService } from './section-generator.service';
 import { SectionVerifierService } from './section-verifier.service';
 import { DiagramGeneratorService } from './diagram-generator.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
+import { CodeContextLoaderService } from './code-context-loader.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SectionPlan, DraftSection } from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
@@ -36,6 +37,10 @@ describe('DraftingOrchestratorService', () => {
 
   const mockHybridRetriever = {
     retrieve: jest.fn(),
+  };
+
+  const mockCodeContextLoader = {
+    ensureClone: jest.fn(),
   };
 
   const mockPrisma = {
@@ -88,6 +93,7 @@ describe('DraftingOrchestratorService', () => {
         { provide: SectionVerifierService, useValue: mockSectionVerifier },
         { provide: DiagramGeneratorService, useValue: mockDiagramGenerator },
         { provide: HybridRetrieverService, useValue: mockHybridRetriever },
+        { provide: CodeContextLoaderService, useValue: mockCodeContextLoader },
         { provide: PrismaService, useValue: mockPrisma },
       ],
     }).compile();
@@ -113,6 +119,9 @@ describe('DraftingOrchestratorService', () => {
     prisma = module.get<PrismaService>(PrismaService);
 
     jest.clearAllMocks();
+    mockCodeContextLoader.ensureClone.mockResolvedValue(
+      '/workspace/draft-repo-123',
+    );
   });
 
   it('should be defined', () => {
@@ -139,7 +148,7 @@ describe('DraftingOrchestratorService', () => {
         verificationNotes: null,
       });
 
-      const result = await service.draft({ repositoryId });
+      const result = await service.draft({ repositoryId, userId: 'user-1' });
 
       expect(result.repositoryId).toBe(repositoryId);
       expect(result.sections).toHaveLength(1);
@@ -155,7 +164,7 @@ describe('DraftingOrchestratorService', () => {
       mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
       mockStructurePlanner.plan.mockResolvedValue([]);
 
-      const result = await service.draft({ repositoryId });
+      const result = await service.draft({ repositoryId, userId: 'user-1' });
 
       expect(result.sections).toHaveLength(0);
       expect(result.diagram).toBeNull();
@@ -173,7 +182,7 @@ describe('DraftingOrchestratorService', () => {
         new Error('Generation failed'),
       );
 
-      const result = await service.draft({ repositoryId });
+      const result = await service.draft({ repositoryId, userId: 'user-1' });
 
       expect(result.sections).toHaveLength(1);
       expect(result.sections[0].verdict).toBe('removed');
@@ -193,7 +202,7 @@ describe('DraftingOrchestratorService', () => {
         new Error('Diagram failed'),
       );
 
-      const result = await service.draft({ repositoryId });
+      const result = await service.draft({ repositoryId, userId: 'user-1' });
 
       expect(result.sections).toHaveLength(1);
       expect(result.diagram).toBeNull();
@@ -215,7 +224,7 @@ describe('DraftingOrchestratorService', () => {
       mockSectionGenerator.generate.mockResolvedValue(mockSection);
       mockSectionVerifier.verify.mockResolvedValue(mockSection);
 
-      await service.draft({ repositoryId: 'repo-1' });
+      await service.draft({ repositoryId: 'repo-1', userId: 'user-1' });
 
       const allRetrieveCalls = mockHybridRetriever.retrieve.mock.calls;
       for (const call of allRetrieveCalls) {
@@ -223,11 +232,57 @@ describe('DraftingOrchestratorService', () => {
       }
     });
 
+    it('should call ensureClone exactly once with the authorized userId (US4)', async () => {
+      mockPrisma.repository.findUnique.mockResolvedValue({
+        id: repositoryId,
+        name: 'test-repo',
+        status: 'READY',
+      });
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+      mockStructurePlanner.plan.mockResolvedValue([]);
+
+      await service.draft({ repositoryId, userId: 'user-42' });
+
+      expect(mockCodeContextLoader.ensureClone).toHaveBeenCalledTimes(1);
+      expect(mockCodeContextLoader.ensureClone).toHaveBeenCalledWith(
+        repositoryId,
+        'user-42',
+      );
+    });
+
+    it('should complete a description-only draft when the code root is null (US4)', async () => {
+      mockPrisma.repository.findUnique.mockResolvedValue({
+        id: repositoryId,
+        name: 'test-repo',
+        status: 'READY',
+      });
+      mockCodeContextLoader.ensureClone.mockResolvedValue(null);
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+      mockStructurePlanner.plan.mockResolvedValue(mockPlan);
+      mockSectionGenerator.generate.mockResolvedValue(mockSection);
+      mockSectionVerifier.verify.mockResolvedValue(mockSection);
+      mockDiagramGenerator.generate.mockResolvedValue({
+        mermaidSource: 'flowchart TD\n    A --> B',
+        modules: ['Auth Module'],
+        verdict: 'verified',
+        verificationNotes: null,
+      });
+
+      const result = await service.draft({
+        repositoryId,
+        userId: 'user-1',
+      });
+
+      expect(result.sections).toHaveLength(1);
+      expect(result.sections[0].verdict).toBe('verified');
+      expect(result.diagram).not.toBeNull();
+    });
+
     it('should fail when repository does not exist', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.draft({ repositoryId: 'nonexistent' }),
+        service.draft({ repositoryId: 'nonexistent', userId: 'user-1' }),
       ).rejects.toThrow('Repository nonexistent not found');
     });
 
@@ -238,7 +293,9 @@ describe('DraftingOrchestratorService', () => {
         status: 'INDEXING',
       });
 
-      await expect(service.draft({ repositoryId })).rejects.toThrow();
+      await expect(
+        service.draft({ repositoryId, userId: 'user-1' }),
+      ).rejects.toThrow();
     });
 
     it('should report retrieval, generation, and verification progress while preserving draft output', async () => {
@@ -259,9 +316,12 @@ describe('DraftingOrchestratorService', () => {
       });
 
       const progressStatuses: string[] = [];
-      const result = await service.draft({ repositoryId }, (status) => {
-        progressStatuses.push(status);
-      });
+      const result = await service.draft(
+        { repositoryId, userId: 'user-1' },
+        (status) => {
+          progressStatuses.push(status);
+        },
+      );
 
       expect(progressStatuses).toEqual([
         'RETRIEVING',
