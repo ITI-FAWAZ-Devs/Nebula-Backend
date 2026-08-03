@@ -147,10 +147,6 @@ export class DocumentationPipeline {
           );
           descriptions.push(null);
         }
-        // 1 second pause between calls to avoid Gemini rate limits
-        if (i < files.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
       }
 
       const validDescriptions = descriptions.filter(
