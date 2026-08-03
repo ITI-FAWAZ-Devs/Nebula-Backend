@@ -56,6 +56,11 @@ export default registerAs('aiProvider', () => {
     bedrockLlmModelStrong:
       process.env.BEDROCK_LLM_MODEL_STRONG || 'openai.gpt-oss-120b-1:0',
     bedrockMaxTokens: parseInt(process.env.BEDROCK_MAX_TOKENS || '16384', 10),
+    llmTimeoutMs: parseInt(process.env.LLM_TIMEOUT_MS || '60000', 10),
+    embeddingTimeoutMs: parseInt(
+      process.env.EMBEDDING_TIMEOUT_MS || '60000',
+      10,
+    ),
     bedrockEmbeddingModels: (
       process.env.BEDROCK_EMBEDDING_MODELS ||
       DEFAULT_BEDROCK_EMBEDDING_MODELS.join(',')

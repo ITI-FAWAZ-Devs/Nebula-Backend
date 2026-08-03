@@ -12,6 +12,8 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequireGithubToken } from '../integrations/decorators/require-github-token.decorator';
 import { RepositoriesService } from './repositories.service';
@@ -19,12 +21,15 @@ import { GithubClientService } from './github-client.service';
 import { AnalysisService } from '../analysis/analysis.service';
 import { ImportRepoDto } from './dto/import-repo.dto';
 import { GithubRepoQueryDto } from './dto/github-repo-query.dto';
-import { DocumentationPipeline } from './documentation.pipeline';
 import { AskService } from './ask.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProgressEventsService } from '../progress/progress-events.service';
 import { DocumentationJobStatus } from '@prisma/client';
+import {
+  DOCUMENTATION_QUEUE,
+  DocumentationJobPayload,
+} from './documentation.constants';
 
 @Controller('repositories')
 export class RepositoriesController {
@@ -34,10 +39,11 @@ export class RepositoriesController {
     private readonly repositoriesService: RepositoriesService,
     private readonly githubClientService: GithubClientService,
     private readonly analysisService: AnalysisService,
-    private readonly documentationPipeline: DocumentationPipeline,
     private readonly askService: AskService,
     private readonly prisma: PrismaService,
     private readonly progress: ProgressEventsService,
+    @InjectQueue(DOCUMENTATION_QUEUE)
+    private readonly documentationQueue: Queue,
   ) {}
 
   /**
@@ -251,17 +257,39 @@ export class RepositoriesController {
 
     this.progress.publishDocumentation(id, job);
 
-    // Run in the background
-    this.documentationPipeline.execute(id, job.id, userId).catch((err) => {
-      this.logger.error(
-        `Background documentation job ${job.id} failed: ${err.message}`,
-      );
+    const payload: DocumentationJobPayload = {
+      repositoryId: id,
+      documentationJobId: job.id,
+      userId,
+    };
+
+    const queueJob = await this.documentationQueue.add('document', payload, {
+      jobId: job.id,
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 5000,
+      },
+      removeOnComplete: 100,
+      removeOnFail: 50,
     });
+
+    await this.prisma.documentationJob.update({
+      where: { id: job.id },
+      data: { queueJobId: String(queueJob.id) },
+    });
+
+    const withQueueJobId = await this.prisma.documentationJob.findUnique({
+      where: { id: job.id },
+    });
+    if (withQueueJobId) {
+      this.progress.publishDocumentation(id, withQueueJobId);
+    }
 
     return {
       success: true,
       message: 'Documentation job started',
-      data: job,
+      data: withQueueJobId ?? job,
     };
   }
 

@@ -87,6 +87,7 @@ describe('ArchitectureDocProcessor', () => {
           useValue: mockDraftingOrchestrator,
         },
         { provide: ProgressEventsService, useValue: mockProgress },
+        { provide: ArchitectureDocEmbedderService, useValue: mockEmbedder },
       ],
     }).compile();
 

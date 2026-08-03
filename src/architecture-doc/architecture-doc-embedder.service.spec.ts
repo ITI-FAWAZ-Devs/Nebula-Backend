@@ -3,17 +3,17 @@ import {
   ArchitectureDocEmbedderService,
   ARCHITECTURE_DOCS_COLLECTION,
 } from './architecture-doc-embedder.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { ChromaService } from '../chroma/chroma.service';
 import { ArchitectureDocEmbeddingPayload } from './dto/architecture-doc-embedding.dto';
 
 describe('ArchitectureDocEmbedderService', () => {
   let service: ArchitectureDocEmbedderService;
-  let geminiService: jest.Mocked<GeminiService>;
+  let aiProvider: jest.Mocked<AiProviderService>;
   let chromaService: jest.Mocked<ChromaService>;
 
   beforeEach(async () => {
-    const mockGeminiService = {
+    const mockAiProvider = {
       embedString: jest.fn(),
     };
 
@@ -24,7 +24,7 @@ describe('ArchitectureDocEmbedderService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ArchitectureDocEmbedderService,
-        { provide: GeminiService, useValue: mockGeminiService },
+        { provide: AiProviderService, useValue: mockAiProvider },
         { provide: ChromaService, useValue: mockChromaService },
       ],
     }).compile();
@@ -32,7 +32,7 @@ describe('ArchitectureDocEmbedderService', () => {
     service = module.get<ArchitectureDocEmbedderService>(
       ArchitectureDocEmbedderService,
     );
-    geminiService = module.get(GeminiService);
+    aiProvider = module.get(AiProviderService);
     chromaService = module.get(ChromaService);
   });
 
@@ -50,13 +50,20 @@ describe('ArchitectureDocEmbedderService', () => {
 
     await service.embedDocument(payload);
 
-    expect(geminiService.embedString).not.toHaveBeenCalled();
+    expect(aiProvider.embedString).not.toHaveBeenCalled();
     expect(chromaService.upsertChunks).not.toHaveBeenCalled();
   });
 
   it('should generate embeddings and upsert sections into ChromaDB with proper structure', async () => {
     const fakeEmbedding = [0.1, 0.2, 0.3];
-    geminiService.embedString.mockResolvedValue(fakeEmbedding);
+    aiProvider.embedString.mockResolvedValue({
+      embedding: fakeEmbedding,
+      model: 'test-model',
+      dimensions: 3,
+      provider: 'gemini',
+      latencyMs: 1,
+      fallbackOccurred: false,
+    });
     chromaService.upsertChunks.mockResolvedValue(undefined);
 
     const payload: ArchitectureDocEmbeddingPayload = {
@@ -76,8 +83,9 @@ describe('ArchitectureDocEmbedderService', () => {
 
     await service.embedDocument(payload);
 
-    expect(geminiService.embedString).toHaveBeenCalledWith(
+    expect(aiProvider.embedString).toHaveBeenCalledWith(
       '# System Overview\n\nThis is the system overview content.',
+      'search_document',
     );
 
     expect(chromaService.upsertChunks).toHaveBeenCalledWith(

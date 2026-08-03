@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HybridRetrieverService } from './hybrid-retriever.service';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import { CodeContextLoaderService } from './code-context-loader.service';
 import { SectionPlan, DraftSection } from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 import { buildSectionGenerationPrompt } from './templates/section-generation.prompt';
@@ -18,12 +19,14 @@ export class SectionGeneratorService {
   constructor(
     private readonly hybridRetriever: HybridRetrieverService,
     private readonly aiProvider: AiProviderService,
+    private readonly codeContextLoader: CodeContextLoaderService,
   ) {}
 
   async generate(
     repositoryId: string,
     plan: SectionPlan,
     context?: HybridRetrievalContext,
+    codeRootPath?: string | null,
   ): Promise<DraftSection> {
     const retrievalContext =
       context ||
@@ -31,12 +34,17 @@ export class SectionGeneratorService {
         topic: plan.retrievalTopic,
       }));
 
-    const prompt = buildSectionGenerationPrompt(plan, retrievalContext);
+    const enrichedContext = await this.codeContextLoader.enrich(
+      retrievalContext,
+      codeRootPath ?? null,
+    );
+
+    const prompt = buildSectionGenerationPrompt(plan, enrichedContext);
     const response = (
       await this.aiProvider.generateContent(prompt, { tier: 'strong' })
     ).text;
 
-    const sourceFiles = this.extractCitations(response, retrievalContext);
+    const sourceFiles = this.extractCitations(response, enrichedContext);
 
     return {
       key: plan.key,

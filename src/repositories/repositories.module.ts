@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { UsersModule } from '../users/users.module';
 import { AnalysisModule } from '../analysis/analysis.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
@@ -13,10 +14,16 @@ import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { ChromaModule } from '../chroma/chroma.module';
 import { ProgressModule } from '../progress/progress.module';
 import { DocumentationPipeline } from './documentation.pipeline';
+import { DocumentationProcessor } from './documentation.processor';
+import { StaleJobRecoveryService } from './stale-job-recovery.service';
 import { AskService } from './ask.service';
+import { DOCUMENTATION_QUEUE } from './documentation.constants';
 
 @Module({
   imports: [
+    BullModule.registerQueue({
+      name: DOCUMENTATION_QUEUE,
+    }),
     UsersModule,
     AnalysisModule,
     IntegrationsModule,
@@ -33,6 +40,8 @@ import { AskService } from './ask.service';
     RepositoriesService,
     GithubClientService,
     DocumentationPipeline,
+    DocumentationProcessor,
+    StaleJobRecoveryService,
     AskService,
   ],
   exports: [

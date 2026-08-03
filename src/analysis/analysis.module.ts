@@ -26,6 +26,6 @@ import { Neo4jModule } from '../neo4j/neo4j.module';
     Neo4jModule,
   ],
   providers: [AnalysisService, AnalysisPipeline, AnalysisProcessor],
-  exports: [AnalysisService],
+  exports: [AnalysisService, BullModule],
 })
 export class AnalysisModule {}

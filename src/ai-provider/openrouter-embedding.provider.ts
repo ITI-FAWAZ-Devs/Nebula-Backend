@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DEFAULT_OPENROUTER_EMBEDDING_MODEL } from '../config/ai-provider.config';
 import { EmbeddingProvider } from './interfaces/embedding-provider.interface';
+import { withAbortSignal } from './fetch-timeout.util';
 
 /**
  * OpenRouter embedding provider — Tier 2 of the embedding chain.
@@ -31,6 +32,7 @@ export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
   private readonly apiKey: string;
   private readonly modelId: string;
   private readonly defaultDimensions: number;
+  private readonly embeddingTimeoutMs: number;
   private resolvedDimensions = 0;
 
   constructor(private readonly configService: ConfigService) {
@@ -43,6 +45,8 @@ export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
       this.configService.get<number>(
         'aiProvider.openrouterEmbeddingDimensions',
       ) || 0;
+    this.embeddingTimeoutMs =
+      this.configService.get<number>('aiProvider.embeddingTimeoutMs') ?? 60000;
 
     if (!this.apiKey) {
       this.logger.warn(
@@ -72,14 +76,17 @@ export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
       );
     }
 
-    const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ model: this.modelId, input: texts }),
-    });
+    const response = await withAbortSignal(this.embeddingTimeoutMs, (signal) =>
+      fetch('https://openrouter.ai/api/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model: this.modelId, input: texts }),
+        signal,
+      }),
+    );
 
     if (!response.ok) {
       const status = response.status;

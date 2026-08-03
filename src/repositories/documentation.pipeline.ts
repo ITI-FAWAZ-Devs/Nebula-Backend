@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DocumentationJobStatus, RepositoryStatus } from '@prisma/client';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -20,6 +21,9 @@ import { ChromaService } from '../chroma/chroma.service';
 export class DocumentationPipeline {
   private readonly logger = new Logger(DocumentationPipeline.name);
 
+  private readonly describeConcurrency: number;
+  private readonly describeDelayMs: number;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly progress: ProgressEventsService,
@@ -28,7 +32,13 @@ export class DocumentationPipeline {
     private readonly discoveryService: DiscoveryService,
     private readonly aiProviderService: AiProviderService,
     private readonly chromaService: ChromaService,
-  ) {}
+    configService: ConfigService,
+  ) {
+    this.describeConcurrency =
+      configService.get<number>('documentation.describeConcurrency') ?? 4;
+    this.describeDelayMs =
+      configService.get<number>('documentation.describeDelayMs') ?? 0;
+  }
 
   /**
    * Executes the documentation pipeline for a repository.
@@ -128,29 +138,52 @@ export class DocumentationPipeline {
         throw new Error('No indexable code files found in repository');
       }
 
-      // 3. Describe files using the AI provider (one file at a time to avoid hammering the API)
+      // 3. Describe files using the AI provider with bounded concurrency and
+      // per-file progress so the frontend sees the pipeline moving.
       await this.setStage(jobId, repositoryId, 'describe_files', null);
 
-      const descriptions: ({ file: string; description: string } | null)[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      const descriptions: ({ file: string; description: string } | null)[] =
+        new Array(files.length).fill(null);
+      let completedCount = 0;
+
+      const describeOne = async (index: number): Promise<void> => {
+        const file = files[index];
         try {
           const fullPath = path.join(localPath, file);
           const content = await fs.readFile(fullPath, 'utf-8');
           const description = (
             await this.aiProviderService.describeFile(file, content)
           ).text;
-          descriptions.push({ file, description });
+          descriptions[index] = { file, description };
         } catch (err) {
           this.logger.error(
             `Error describing file ${file}: ${(err as Error).message}`,
           );
-          descriptions.push(null);
         }
-        // 1 second pause between calls to avoid Gemini rate limits
-        if (i < files.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+        completedCount += 1;
+        await this.updateJob(repositoryId, jobId, {
+          stage: 'describe_files',
+          progress: Math.round((completedCount / files.length) * 100),
+        });
+        if (this.describeDelayMs > 0) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, this.describeDelayMs),
+          );
         }
+      };
+
+      let nextIndex = 0;
+      const workers = Array.from(
+        { length: Math.min(this.describeConcurrency, files.length) },
+        async () => {
+          while (nextIndex < files.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            await describeOne(index);
+          }
+        },
+      );
+      await Promise.all(workers);
       }
 
       const validDescriptions = descriptions.filter(
@@ -222,6 +255,7 @@ export class DocumentationPipeline {
       await this.updateJob(repositoryId, jobId, {
         status: DocumentationJobStatus.COMPLETED,
         stage: 'done',
+        progress: 100,
         finishedAt: new Date(),
         error: null,
       });
@@ -283,6 +317,7 @@ export class DocumentationPipeline {
     data: {
       status?: DocumentationJobStatus;
       stage?: string | null;
+      progress?: number | null;
       error?: string | null;
       startedAt?: Date;
       finishedAt?: Date;

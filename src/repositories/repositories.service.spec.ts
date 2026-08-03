@@ -3,10 +3,15 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { DocStatus, RepositoryStatus } from '@prisma/client';
 import { RepositoriesService } from './repositories.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrganizationsService } from '../organizations/organizations.service';
 
 describe('RepositoriesService', () => {
   let service: RepositoriesService;
   let prisma: PrismaService;
+
+  const mockOrganizationsService = {
+    findOrCreate: jest.fn(),
+  };
 
   const mockPrisma = {
     repository: {
@@ -28,6 +33,10 @@ describe('RepositoriesService', () => {
         {
           provide: PrismaService,
           useValue: mockPrisma,
+        },
+        {
+          provide: OrganizationsService,
+          useValue: mockOrganizationsService,
         },
       ],
     }).compile();

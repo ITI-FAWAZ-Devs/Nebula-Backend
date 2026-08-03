@@ -7,7 +7,9 @@ import { Neo4jModule } from '../neo4j/neo4j.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ProgressModule } from '../progress/progress.module';
 import { RepositoriesModule } from '../repositories/repositories.module';
+import { GitModule } from '../git/git.module';
 import { HybridRetrieverService } from './hybrid-retriever.service';
+import { CodeContextLoaderService } from './code-context-loader.service';
 import { StructurePlannerService } from './structure-planner.service';
 import { SectionGeneratorService } from './section-generator.service';
 import { SectionVerifierService } from './section-verifier.service';
@@ -33,10 +35,12 @@ import { GeminiModule } from 'src/gemini/gemini.module';
     GeminiModule,
     ProgressModule,
     RepositoriesModule,
+    GitModule,
   ],
   controllers: [ArchitectureDocController],
   providers: [
     HybridRetrieverService,
+    CodeContextLoaderService,
     StructurePlannerService,
     SectionGeneratorService,
     SectionVerifierService,

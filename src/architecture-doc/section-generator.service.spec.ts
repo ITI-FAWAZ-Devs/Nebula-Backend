@@ -2,12 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SectionGeneratorService } from './section-generator.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import { CodeContextLoaderService } from './code-context-loader.service';
 import { SectionPlan, DraftSection } from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 
 describe('SectionGeneratorService', () => {
   let service: SectionGeneratorService;
-  let hybridRetriever: HybridRetrieverService;
   let aiProvider: AiProviderService;
 
   const mockHybridRetriever = {
@@ -16,6 +16,10 @@ describe('SectionGeneratorService', () => {
 
   const mockAiProvider = {
     generateContent: jest.fn(),
+  };
+
+  const mockCodeContextLoader = {
+    enrich: jest.fn(),
   };
 
   const llmResult = (text: string) => ({
@@ -63,16 +67,15 @@ describe('SectionGeneratorService', () => {
         SectionGeneratorService,
         { provide: HybridRetrieverService, useValue: mockHybridRetriever },
         { provide: AiProviderService, useValue: mockAiProvider },
+        { provide: CodeContextLoaderService, useValue: mockCodeContextLoader },
       ],
     }).compile();
 
     service = module.get<SectionGeneratorService>(SectionGeneratorService);
-    hybridRetriever = module.get<HybridRetrieverService>(
-      HybridRetrieverService,
-    );
     aiProvider = module.get<AiProviderService>(AiProviderService);
 
     jest.clearAllMocks();
+    mockCodeContextLoader.enrich.mockImplementation((context) => context);
   });
 
   it('should be defined', () => {
@@ -175,6 +178,67 @@ The authentication module handles user login [src/auth.ts] and uses a library [s
       await expect(service.generate(repositoryId, mockPlan)).rejects.toThrow(
         'Retrieval failed',
       );
+    });
+
+    it('should embed loaded codeContent in the prompt (US1)', async () => {
+      const enrichedContext: HybridRetrievalContext = {
+        ...mockContext,
+        files: [
+          {
+            ...mockContext.files[0],
+            codeContent: 'export const login = () => {};',
+          },
+        ],
+      };
+      mockCodeContextLoader.enrich.mockResolvedValue(enrichedContext);
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult('## Authentication Module\n\nHandles auth [src/auth.ts].'),
+      );
+
+      await service.generate(
+        repositoryId,
+        mockPlan,
+        mockContext,
+        '/workspace/repo',
+      );
+
+      expect(mockCodeContextLoader.enrich).toHaveBeenCalledWith(
+        mockContext,
+        '/workspace/repo',
+      );
+      const prompt = mockAiProvider.generateContent.mock.calls[0][0];
+      expect(prompt).toContain('Source code evidence');
+      expect(prompt).toContain('export const login = () => {};');
+      expect(prompt).toContain('src/auth.ts');
+    });
+
+    it('should render [code unavailable] markers for files with a load error (US1)', async () => {
+      const erroredContext: HybridRetrievalContext = {
+        ...mockContext,
+        files: [
+          {
+            ...mockContext.files[0],
+            codeLoadError: 'EISDIR: illegal operation on a directory',
+          },
+        ],
+      };
+      mockCodeContextLoader.enrich.mockResolvedValue(erroredContext);
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult('## Authentication Module\n\nHandles auth [src/auth.ts].'),
+      );
+
+      await service.generate(
+        repositoryId,
+        mockPlan,
+        mockContext,
+        '/workspace/repo',
+      );
+
+      const prompt = mockAiProvider.generateContent.mock.calls[0][0];
+      expect(prompt).toContain(
+        '[code unavailable: EISDIR: illegal operation on a directory]',
+      );
+      expect(prompt).toContain('src/auth.ts: Auth module');
     });
   });
 });

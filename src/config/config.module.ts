@@ -14,6 +14,8 @@ import neo4jConfig from './neo4j.config';
 import geminiConfig from './gemini.config';
 import chromaConfig from './chroma.config';
 import aiProviderConfig from './ai-provider.config';
+import documentationConfig from './documentation.config';
+import draftingConfig from './drafting.config';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import aiProviderConfig from './ai-provider.config';
         geminiConfig,
         chromaConfig,
         aiProviderConfig,
+        documentationConfig,
+        draftingConfig,
       ],
       envFilePath: ['.env'],
     }),

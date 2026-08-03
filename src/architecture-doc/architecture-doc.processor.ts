@@ -34,7 +34,7 @@ export class ArchitectureDocProcessor extends WorkerHost {
   }
 
   async process(job: Job<ArchitectureDraftJobPayload>): Promise<void> {
-    const { repositoryId, documentId } = job.data;
+    const { repositoryId, documentId, userId } = job.data;
     this.logger.log(
       `Processing architecture draft job ${documentId} for repository ${repositoryId}`,
     );
@@ -44,7 +44,7 @@ export class ArchitectureDocProcessor extends WorkerHost {
 
       this.logger.log(`[${documentId}] Calling drafting orchestrator...`);
       const draft = await this.draftingOrchestrator.draft(
-        { repositoryId },
+        { repositoryId, userId },
         async (status) => {
           this.logger.log(`[${documentId}] Progress: ${status}`);
           await this.updateStatusMonotonic(repositoryId, documentId, status);
@@ -128,7 +128,9 @@ export class ArchitectureDocProcessor extends WorkerHost {
       // Embed document sections into ChromaDB
       if (persistedSections.length > 0) {
         try {
-          this.logger.log(`[${documentId}] Initiating ChromaDB embedding for sections...`);
+          this.logger.log(
+            `[${documentId}] Initiating ChromaDB embedding for sections...`,
+          );
           await this.embedder.embedDocument({
             docId: documentId,
             version: docVersion,
