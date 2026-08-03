@@ -18,6 +18,7 @@ import { ArchitectureDocController } from './architecture-doc.controller';
 import { ArchitectureDocService } from './architecture-doc.service';
 import { ArchitectureDocProcessor } from './architecture-doc.processor';
 import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.service';
+import { GeminiModule } from 'src/gemini/gemini.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.serv
     ChromaModule,
     Neo4jModule,
     PrismaModule,
+    GeminiModule,
     ProgressModule,
     RepositoriesModule,
   ],
@@ -51,4 +53,4 @@ import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.serv
     ArchitectureDocEmbedderService,
   ],
 })
-export class ArchitectureDocModule {}
+export class ArchitectureDocModule { }
