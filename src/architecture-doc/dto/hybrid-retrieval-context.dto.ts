@@ -29,6 +29,8 @@ export interface RetrievedFile {
   graphHop?: number;
   evidenceSources: ('semantic' | 'graph')[];
   combinedScore: number;
+  codeContent?: string;
+  codeLoadError?: string;
 }
 
 export interface FileRelationship {

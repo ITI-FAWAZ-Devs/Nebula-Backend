@@ -5,6 +5,7 @@ import { SectionGeneratorService } from './section-generator.service';
 import { SectionVerifierService } from './section-verifier.service';
 import { DiagramGeneratorService } from './diagram-generator.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
+import { CodeContextLoaderService } from './code-context-loader.service';
 import { DocStatus } from '@prisma/client';
 import {
   DraftRequest,
@@ -12,7 +13,6 @@ import {
   DraftSection,
   ArchitectureDiagram,
 } from './dto/architecture-draft.dto';
-import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 
 export type DraftProgressReporter = (status: DocStatus) => void | Promise<void>;
 
@@ -33,13 +33,14 @@ export class DraftingOrchestratorService {
     private readonly sectionVerifier: SectionVerifierService,
     private readonly diagramGenerator: DiagramGeneratorService,
     private readonly hybridRetriever: HybridRetrieverService,
+    private readonly codeContextLoader: CodeContextLoaderService,
   ) {}
 
   async draft(
     request: DraftRequest,
     onProgress?: DraftProgressReporter,
   ): Promise<ArchitectureDraft> {
-    const { repositoryId } = request;
+    const { repositoryId, userId } = request;
 
     const repository = await this.prisma.repository.findUnique({
       where: { id: repositoryId },
@@ -59,6 +60,14 @@ export class DraftingOrchestratorService {
       `[${repositoryId}] Starting draft for "${repository.name}"`,
     );
 
+    const codeRootPath = await this.codeContextLoader.ensureClone(
+      repositoryId,
+      userId,
+    );
+    this.logger.log(
+      `[${repositoryId}] Code availability: ${codeRootPath ? `available at ${codeRootPath}` : 'unavailable — continuing with description-only evidence'}`,
+    );
+
     await onProgress?.('RETRIEVING');
     this.logger.log(`[${repositoryId}] Retrieving broad context...`);
 
@@ -71,7 +80,10 @@ export class DraftingOrchestratorService {
     );
 
     this.logger.log(`[${repositoryId}] Planning sections...`);
-    const sectionPlan = await this.structurePlanner.plan(repositoryId);
+    const sectionPlan = await this.structurePlanner.plan(
+      repositoryId,
+      codeRootPath,
+    );
 
     this.logger.log(
       `[${repositoryId}] Section plan: ${sectionPlan.length} sections planned`,
@@ -125,6 +137,7 @@ export class DraftingOrchestratorService {
           repositoryId,
           plan,
           context,
+          codeRootPath,
         );
 
         this.logger.log(
@@ -140,6 +153,7 @@ export class DraftingOrchestratorService {
           generated,
           context,
           repositoryId,
+          codeRootPath,
         );
 
         this.logger.log(

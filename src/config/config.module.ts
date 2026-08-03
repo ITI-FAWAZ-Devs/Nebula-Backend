@@ -15,6 +15,7 @@ import geminiConfig from './gemini.config';
 import chromaConfig from './chroma.config';
 import aiProviderConfig from './ai-provider.config';
 import documentationConfig from './documentation.config';
+import draftingConfig from './drafting.config';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import documentationConfig from './documentation.config';
         chromaConfig,
         aiProviderConfig,
         documentationConfig,
+        draftingConfig,
       ],
       envFilePath: ['.env'],
     }),

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HybridRetrieverService } from './hybrid-retriever.service';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import { CodeContextLoaderService } from './code-context-loader.service';
 import { DraftSection } from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 import { buildSectionVerificationPrompt } from './templates/section-verification.prompt';
@@ -25,14 +26,20 @@ export class SectionVerifierService {
   constructor(
     private readonly hybridRetriever: HybridRetrieverService,
     private readonly aiProvider: AiProviderService,
+    private readonly codeContextLoader: CodeContextLoaderService,
   ) {}
 
   async verify(
     section: DraftSection,
     context: HybridRetrievalContext,
     repositoryId: string,
+    codeRootPath?: string | null,
   ): Promise<DraftSection> {
-    const prompt = buildSectionVerificationPrompt(section, context);
+    const enrichedContext = await this.codeContextLoader.enrich(
+      context,
+      codeRootPath ?? null,
+    );
+    const prompt = buildSectionVerificationPrompt(section, enrichedContext);
     const response = (
       await this.aiProvider.generateContent(prompt, { tier: 'strong' })
     ).text;
@@ -67,6 +74,7 @@ export class SectionVerifierService {
         context,
         repositoryId,
         verification.notes,
+        codeRootPath ?? null,
       );
 
       if (followUpContext) {
@@ -119,6 +127,7 @@ export class SectionVerifierService {
     context: HybridRetrievalContext,
     repositoryId: string,
     notes: string | null,
+    codeRootPath: string | null,
   ): Promise<HybridRetrievalContext | null> {
     if (!notes) return null;
 
@@ -128,9 +137,13 @@ export class SectionVerifierService {
     const focusedTopic = topicMatch[1].trim();
 
     try {
-      return await this.hybridRetriever.retrieve(repositoryId, {
-        topic: focusedTopic,
-      });
+      const followUpContext = await this.hybridRetriever.retrieve(
+        repositoryId,
+        {
+          topic: focusedTopic,
+        },
+      );
+      return await this.codeContextLoader.enrich(followUpContext, codeRootPath);
     } catch (error) {
       this.logger.warn(
         `Follow-up retrieval failed: ${(error as Error).message}`,

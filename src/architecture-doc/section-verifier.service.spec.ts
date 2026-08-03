@@ -2,13 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SectionVerifierService } from './section-verifier.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import { CodeContextLoaderService } from './code-context-loader.service';
 import { DraftSection } from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 import { seededHallucinationSection } from '../../test/drafting-pipeline/seeded-hallucination';
 
 describe('SectionVerifierService', () => {
   let service: SectionVerifierService;
-  let hybridRetriever: HybridRetrieverService;
   let aiProvider: AiProviderService;
 
   const mockHybridRetriever = {
@@ -17,6 +17,10 @@ describe('SectionVerifierService', () => {
 
   const mockAiProvider = {
     generateContent: jest.fn(),
+  };
+
+  const mockCodeContextLoader = {
+    enrich: jest.fn(),
   };
 
   const llmResult = (text: string) => ({
@@ -67,16 +71,15 @@ describe('SectionVerifierService', () => {
         SectionVerifierService,
         { provide: HybridRetrieverService, useValue: mockHybridRetriever },
         { provide: AiProviderService, useValue: mockAiProvider },
+        { provide: CodeContextLoaderService, useValue: mockCodeContextLoader },
       ],
     }).compile();
 
     service = module.get<SectionVerifierService>(SectionVerifierService);
-    hybridRetriever = module.get<HybridRetrieverService>(
-      HybridRetrieverService,
-    );
     aiProvider = module.get<AiProviderService>(AiProviderService);
 
     jest.clearAllMocks();
+    mockCodeContextLoader.enrich.mockImplementation((context) => context);
   });
 
   it('should be defined', () => {
@@ -311,6 +314,95 @@ describe('SectionVerifierService', () => {
       if (result.verdict === 'verified') {
         expect(result.sourceFiles.length).toBeGreaterThanOrEqual(1);
       }
+    });
+
+    it('should embed code evidence in the primary verification prompt (US2)', async () => {
+      const enrichedContext: HybridRetrievalContext = {
+        ...mockContext,
+        files: [
+          {
+            ...mockContext.files[0],
+            codeContent: 'export const authenticate = () => {};',
+          },
+        ],
+      };
+      mockCodeContextLoader.enrich.mockResolvedValue(enrichedContext);
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          JSON.stringify({
+            verdict: 'verified',
+            rewrittenBody: null,
+            notes: null,
+          }),
+        ),
+      );
+
+      await service.verify(
+        mockSection,
+        mockContext,
+        repositoryId,
+        '/workspace/repo',
+      );
+
+      expect(mockCodeContextLoader.enrich).toHaveBeenCalledWith(
+        mockContext,
+        '/workspace/repo',
+      );
+      const prompt = mockAiProvider.generateContent.mock.calls[0][0];
+      expect(prompt).toContain('Source code evidence');
+      expect(prompt).toContain('export const authenticate = () => {};');
+    });
+
+    it('should embed code evidence in the follow-up verification prompt (US2)', async () => {
+      const followUpContext: HybridRetrievalContext = {
+        ...mockContext,
+        files: [
+          {
+            filePath: 'src/jwt.ts',
+            description: 'JWT module',
+            evidenceSources: ['semantic'],
+            combinedScore: 80,
+            codeContent: 'export const signJwt = () => {};',
+          },
+        ],
+      };
+      mockAiProvider.generateContent
+        .mockResolvedValueOnce(
+          llmResult(
+            JSON.stringify({
+              verdict: 'unverified',
+              rewrittenBody: null,
+              notes: 'Need more evidence about JWT implementation.',
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          llmResult(
+            JSON.stringify({
+              verdict: 'verified',
+              rewrittenBody: null,
+              notes: null,
+            }),
+          ),
+        );
+      mockHybridRetriever.retrieve.mockResolvedValue(followUpContext);
+      mockCodeContextLoader.enrich.mockResolvedValue(followUpContext);
+
+      await service.verify(
+        mockSection,
+        mockContext,
+        repositoryId,
+        '/workspace/repo',
+      );
+
+      expect(mockCodeContextLoader.enrich).toHaveBeenCalledTimes(2);
+      expect(mockCodeContextLoader.enrich).toHaveBeenLastCalledWith(
+        followUpContext,
+        '/workspace/repo',
+      );
+      const followUpPrompt = mockAiProvider.generateContent.mock.calls[1][0];
+      expect(followUpPrompt).toContain('Source code evidence');
+      expect(followUpPrompt).toContain('export const signJwt = () => {};');
     });
   });
 });

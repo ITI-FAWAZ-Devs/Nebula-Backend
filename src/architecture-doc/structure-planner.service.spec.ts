@@ -3,13 +3,12 @@ import { StructurePlannerService } from './structure-planner.service';
 import { HybridRetrieverService } from './hybrid-retriever.service';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CodeContextLoaderService } from './code-context-loader.service';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 
 describe('StructurePlannerService', () => {
   let service: StructurePlannerService;
-  let hybridRetriever: HybridRetrieverService;
   let aiProvider: AiProviderService;
-  let prisma: PrismaService;
 
   const mockHybridRetriever = {
     retrieve: jest.fn(),
@@ -17,6 +16,10 @@ describe('StructurePlannerService', () => {
 
   const mockAiProvider = {
     generateContent: jest.fn(),
+  };
+
+  const mockCodeContextLoader = {
+    enrich: jest.fn(),
   };
 
   const mockPrisma = {
@@ -64,17 +67,15 @@ describe('StructurePlannerService', () => {
         { provide: HybridRetrieverService, useValue: mockHybridRetriever },
         { provide: AiProviderService, useValue: mockAiProvider },
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: CodeContextLoaderService, useValue: mockCodeContextLoader },
       ],
     }).compile();
 
     service = module.get<StructurePlannerService>(StructurePlannerService);
-    hybridRetriever = module.get<HybridRetrieverService>(
-      HybridRetrieverService,
-    );
     aiProvider = module.get<AiProviderService>(AiProviderService);
-    prisma = module.get<PrismaService>(PrismaService);
 
     jest.clearAllMocks();
+    mockCodeContextLoader.enrich.mockImplementation((context) => context);
   });
 
   it('should be defined', () => {
@@ -407,6 +408,49 @@ describe('StructurePlannerService', () => {
       );
 
       await expect(service.plan(repositoryId)).rejects.toThrow();
+    });
+
+    it('should embed code evidence in the plan prompt (US3)', async () => {
+      const enrichedContext: HybridRetrievalContext = {
+        ...mockContext,
+        files: [
+          {
+            ...mockContext.files[0],
+            codeContent: 'export class AuthService {}',
+          },
+        ],
+      };
+      mockPrisma.repository.findUnique.mockResolvedValue({
+        id: repositoryId,
+        name: 'test-repo',
+        owner: 'test-owner',
+        status: 'READY',
+      });
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+      mockCodeContextLoader.enrich.mockResolvedValue(enrichedContext);
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          JSON.stringify([
+            {
+              key: 'auth-module',
+              title: 'Authentication Module',
+              purpose: 'Handles user authentication',
+              retrievalTopic: 'authentication implementation',
+            },
+          ]),
+        ),
+      );
+
+      await service.plan(repositoryId, '/workspace/repo');
+
+      expect(mockCodeContextLoader.enrich).toHaveBeenCalledWith(
+        mockContext,
+        '/workspace/repo',
+      );
+      const prompt = mockAiProvider.generateContent.mock.calls[0][0];
+      expect(prompt).toContain('Source code evidence');
+      expect(prompt).toContain('export class AuthService {}');
+      expect(prompt).toContain('src/auth.ts');
     });
   });
 });
