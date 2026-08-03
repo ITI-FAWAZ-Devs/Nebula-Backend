@@ -61,6 +61,8 @@ export class AuthController {
       success: true,
       message: 'Login successful',
       data: {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
         user: result.user,
       },
     };

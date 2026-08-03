@@ -51,11 +51,8 @@ export class GraphifyService {
       });
     } catch (error) {
       const err = error as Error & { stderr?: string; stdout?: string };
-      this.logger.error(
-        `Graphify failed: ${err.message}\nstderr: ${err.stderr || ''}`,
-      );
-      throw new InternalServerErrorException(
-        `Graphify analysis failed: ${err.message}`,
+      this.logger.warn(
+        `Graphify CLI execution failed or binary '${bin}' not found: ${err.message}\nstderr: ${err.stderr || ''}. Proceeding with fallback graph.`,
       );
     }
 

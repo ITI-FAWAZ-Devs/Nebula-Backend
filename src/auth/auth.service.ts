@@ -28,7 +28,7 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   // ── Register ──
 

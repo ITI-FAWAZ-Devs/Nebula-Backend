@@ -184,116 +184,115 @@ export class DocumentationPipeline {
         },
       );
       await Promise.all(workers);
-      }
 
       const validDescriptions = descriptions.filter(
-        (d): d is { file: string; description: string } => d !== null,
+      (d): d is { file: string; description: string } => d !== null,
+    );
+
+    if (validDescriptions.length === 0) {
+      throw new Error(
+        'Failed to generate description for any file in the repository',
       );
-
-      if (validDescriptions.length === 0) {
-        throw new Error(
-          'Failed to generate description for any file in the repository',
-        );
-      }
-
-      // 4. Batch embed file descriptions. Indexing uses `search_document`
-      // input type so the gateway embeds in the document vector space.
-      await this.setStage(jobId, repositoryId, 'embed_descriptions', null);
-      const textToEmbed = validDescriptions.map((d) => d.description);
-      const embedResult = await this.aiProviderService.embedMany(
-        textToEmbed,
-        'search_document',
-      );
-
-      const embeddingMeta = embeddingSpaceMetadata(embedResult);
-
-      // Map to Chroma chunks
-      const chunks = validDescriptions.map((d, index) => {
-        const fileLanguage = this.getLanguageFromExtension(d.file);
-        return {
-          id: `${repositoryId}:${d.file}`,
-          document: d.description,
-          metadata: {
-            repositoryId,
-            userId: repository.userId,
-            filePath: d.file,
-            language: fileLanguage,
-            commitHash: commitHash || 'unknown',
-            ...embeddingMeta,
-          },
-          embedding: embedResult.embeddings[index],
-        };
-      });
-
-      // 5. Wipe-and-rebuild the Chroma collection that matches this run's
-      // embedding space. Primary embeddings go to `repo-<id>`; embeddings
-      // produced by a fallback provider are quarantined into a per-space
-      // collection (`repo-<id>-quarantine-<provider>-<model>-<dims>d`) so the
-      // vector spaces are never mixed — including between different fallback
-      // providers.
-      // TODO(re-embedding): once the primary provider is healthy again,
-      // re-embed quarantined documents into the primary collection
-      // (re-indexing is a separate task).
-      await this.setStage(jobId, repositoryId, 'save_chroma', null);
-      const collectionName = collectionNameFor(repositoryId, embedResult);
-
-      // Wipe the collection if it exists
-      await this.chromaService.deleteCollection(collectionName);
-      // Rebuild and upsert chunks
-      await this.chromaService.upsertChunks(collectionName, chunks);
-
-      // 6. Complete Job
-      await this.prisma.repository.update({
-        where: { id: repositoryId },
-        data: {
-          status: RepositoryStatus.READY,
-          lastDocumentedAt: new Date(),
-          documentedCommit: commitHash,
-        },
-      });
-
-      await this.updateJob(repositoryId, jobId, {
-        status: DocumentationJobStatus.COMPLETED,
-        stage: 'done',
-        progress: 100,
-        finishedAt: new Date(),
-        error: null,
-      });
-
-      this.logger.log(
-        `Documentation indexing completed for repository ${repositoryId}`,
-      );
-    } catch (error) {
-      const message =
-        (error as Error).message || 'Unknown documentation pipeline error';
-      this.logger.error(
-        `Documentation pipeline failed for repository ${repositoryId}: ${message}`,
-      );
-
-      await this.prisma.repository
-        .update({
-          where: { id: repositoryId },
-          data: { status: RepositoryStatus.FAILED },
-        })
-        .catch(() => undefined);
-
-      await this.updateJob(repositoryId, jobId, {
-        status: DocumentationJobStatus.FAILED,
-        error: message,
-        finishedAt: new Date(),
-      }).catch(() => undefined);
-
-      throw error;
-    } finally {
-      // Clean up workspace if it was created
-      if (workspace) {
-        await this.workspaceService
-          .cleanup(workspace)
-          .catch((err) =>
-            this.logger.error(`Failed to cleanup workspace: ${err.message}`),
-          );
-      }
     }
+
+    // 4. Batch embed file descriptions. Indexing uses `search_document`
+    // input type so the gateway embeds in the document vector space.
+    await this.setStage(jobId, repositoryId, 'embed_descriptions', null);
+    const textToEmbed = validDescriptions.map((d) => d.description);
+    const embedResult = await this.aiProviderService.embedMany(
+      textToEmbed,
+      'search_document',
+    );
+
+    const embeddingMeta = embeddingSpaceMetadata(embedResult);
+
+    // Map to Chroma chunks
+    const chunks = validDescriptions.map((d, index) => {
+      const fileLanguage = this.getLanguageFromExtension(d.file);
+      return {
+        id: `${repositoryId}:${d.file}`,
+        document: d.description,
+        metadata: {
+          repositoryId,
+          userId: repository.userId,
+          filePath: d.file,
+          language: fileLanguage,
+          commitHash: commitHash || 'unknown',
+          ...embeddingMeta,
+        },
+        embedding: embedResult.embeddings[index],
+      };
+    });
+
+    // 5. Wipe-and-rebuild the Chroma collection that matches this run's
+    // embedding space. Primary embeddings go to `repo-<id>`; embeddings
+    // produced by a fallback provider are quarantined into a per-space
+    // collection (`repo-<id>-quarantine-<provider>-<model>-<dims>d`) so the
+    // vector spaces are never mixed — including between different fallback
+    // providers.
+    // TODO(re-embedding): once the primary provider is healthy again,
+    // re-embed quarantined documents into the primary collection
+    // (re-indexing is a separate task).
+    await this.setStage(jobId, repositoryId, 'save_chroma', null);
+    const collectionName = collectionNameFor(repositoryId, embedResult);
+
+    // Wipe the collection if it exists
+    await this.chromaService.deleteCollection(collectionName);
+    // Rebuild and upsert chunks
+    await this.chromaService.upsertChunks(collectionName, chunks);
+
+    // 6. Complete Job
+    await this.prisma.repository.update({
+      where: { id: repositoryId },
+      data: {
+        status: RepositoryStatus.READY,
+        lastDocumentedAt: new Date(),
+        documentedCommit: commitHash,
+      },
+    });
+
+    await this.updateJob(repositoryId, jobId, {
+      status: DocumentationJobStatus.COMPLETED,
+      stage: 'done',
+      progress: 100,
+      finishedAt: new Date(),
+      error: null,
+    });
+
+    this.logger.log(
+      `Documentation indexing completed for repository ${repositoryId}`,
+    );
+  } catch(error) {
+    const message =
+      (error as Error).message || 'Unknown documentation pipeline error';
+    this.logger.error(
+      `Documentation pipeline failed for repository ${repositoryId}: ${message}`,
+    );
+
+    await this.prisma.repository
+      .update({
+        where: { id: repositoryId },
+        data: { status: RepositoryStatus.FAILED },
+      })
+      .catch(() => undefined);
+
+    await this.updateJob(repositoryId, jobId, {
+      status: DocumentationJobStatus.FAILED,
+      error: message,
+      finishedAt: new Date(),
+    }).catch(() => undefined);
+
+    throw error;
+  } finally {
+    // Clean up workspace if it was created
+    if (workspace) {
+      await this.workspaceService
+        .cleanup(workspace)
+        .catch((err) =>
+          this.logger.error(`Failed to cleanup workspace: ${err.message}`),
+        );
+    }
+  }
   }
 
   private async setStage(
@@ -301,9 +300,9 @@ export class DocumentationPipeline {
     repositoryId: string,
     stage: string,
     repoStatus: RepositoryStatus | null,
-  ): Promise<void> {
+  ): Promise < void> {
     await this.updateJob(repositoryId, jobId, { stage });
-    if (repoStatus) {
+    if(repoStatus) {
       await this.prisma.repository.update({
         where: { id: repositoryId },
         data: { status: repoStatus },
@@ -315,14 +314,14 @@ export class DocumentationPipeline {
     repositoryId: string,
     jobId: string,
     data: {
-      status?: DocumentationJobStatus;
-      stage?: string | null;
-      progress?: number | null;
-      error?: string | null;
-      startedAt?: Date;
-      finishedAt?: Date;
-    },
-  ): Promise<void> {
+    status?: DocumentationJobStatus;
+    stage?: string | null;
+    progress?: number | null;
+    error?: string | null;
+    startedAt?: Date;
+    finishedAt?: Date;
+  },
+  ): Promise < void> {
     await this.prisma.documentationJob.update({
       where: { id: jobId },
       data,
@@ -331,7 +330,7 @@ export class DocumentationPipeline {
     const fresh = await this.prisma.documentationJob.findUnique({
       where: { id: jobId },
     });
-    if (fresh) {
+    if(fresh) {
       this.progress.publishDocumentation(repositoryId, fresh);
     }
   }
@@ -342,11 +341,11 @@ export class DocumentationPipeline {
   private async getFilesRecursively(
     dir: string,
     baseDir = dir,
-  ): Promise<string[]> {
+  ): Promise < string[] > {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     const files: string[] = [];
 
-    for (const entry of entries) {
+    for(const entry of entries) {
       const resPath = path.join(dir, entry.name);
       const relPath = path.relative(baseDir, resPath);
 
@@ -423,47 +422,47 @@ export class DocumentationPipeline {
    * Simple helper to map file extension to programming language.
    */
   private getLanguageFromExtension(filePath: string): string {
-    const ext = path.extname(filePath).toLowerCase();
-    switch (ext) {
-      case '.ts':
-      case '.tsx':
-        return 'TypeScript';
-      case '.js':
-      case '.jsx':
-        return 'JavaScript';
-      case '.py':
-        return 'Python';
-      case '.go':
-        return 'Go';
-      case '.java':
-        return 'Java';
-      case '.cpp':
-      case '.cc':
-      case '.h':
-        return 'C++';
-      case '.c':
-        return 'C';
-      case '.cs':
-        return 'C#';
-      case '.rb':
-        return 'Ruby';
-      case '.php':
-        return 'PHP';
-      case '.sh':
-        return 'Shell';
-      case '.yml':
-      case '.yaml':
-        return 'YAML';
-      case '.json':
-        return 'JSON';
-      case '.md':
-        return 'Markdown';
-      case '.html':
-        return 'HTML';
-      case '.css':
-        return 'CSS';
-      default:
-        return 'Unknown';
-    }
+  const ext = path.extname(filePath).toLowerCase();
+  switch (ext) {
+    case '.ts':
+    case '.tsx':
+      return 'TypeScript';
+    case '.js':
+    case '.jsx':
+      return 'JavaScript';
+    case '.py':
+      return 'Python';
+    case '.go':
+      return 'Go';
+    case '.java':
+      return 'Java';
+    case '.cpp':
+    case '.cc':
+    case '.h':
+      return 'C++';
+    case '.c':
+      return 'C';
+    case '.cs':
+      return 'C#';
+    case '.rb':
+      return 'Ruby';
+    case '.php':
+      return 'PHP';
+    case '.sh':
+      return 'Shell';
+    case '.yml':
+    case '.yaml':
+      return 'YAML';
+    case '.json':
+      return 'JSON';
+    case '.md':
+      return 'Markdown';
+    case '.html':
+      return 'HTML';
+    case '.css':
+      return 'CSS';
+    default:
+      return 'Unknown';
   }
+}
 }
