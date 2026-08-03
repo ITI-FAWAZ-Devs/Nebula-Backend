@@ -28,7 +28,7 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   // ── Register ──
 
@@ -426,7 +426,7 @@ export class AuthService {
         httpOnly: true,
         secure: isProduction,
         sameSite: 'lax' as const,
-        path: '/',
+        path: '/auth/refresh',
         maxAge: this.tokenService.getRefreshTokenMaxAge(),
       },
     };
@@ -441,7 +441,7 @@ export class AuthService {
       },
       refresh: {
         httpOnly: true,
-        path: '/',
+        path: '/auth/refresh',
         maxAge: 0,
       },
     };

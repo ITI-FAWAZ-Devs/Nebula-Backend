@@ -61,6 +61,8 @@ export class AuthController {
       success: true,
       message: 'Login successful',
       data: {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
         user: result.user,
       },
     };
@@ -297,8 +299,5 @@ export class AuthController {
     const cookieOptions = this.authService.getLogoutCookieOptions();
     res.cookie('nebula_access_token', '', cookieOptions.access);
     res.cookie('nebula_refresh_token', '', cookieOptions.refresh);
-    // Also clear any legacy cookies on specific paths
-    res.cookie('nebula_refresh_token', '', { ...cookieOptions.refresh, path: '/auth/refresh' });
-    res.cookie('nebula_refresh_token', '', { ...cookieOptions.refresh, path: '/api/auth/refresh' });
   }
 }
