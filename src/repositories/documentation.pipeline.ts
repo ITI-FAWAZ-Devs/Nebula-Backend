@@ -184,6 +184,7 @@ export class DocumentationPipeline {
         },
       );
       await Promise.all(workers);
+      }
 
       const validDescriptions = descriptions.filter(
         (d): d is { file: string; description: string } => d !== null,
