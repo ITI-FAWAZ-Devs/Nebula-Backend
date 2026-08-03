@@ -426,7 +426,7 @@ export class AuthService {
         httpOnly: true,
         secure: isProduction,
         sameSite: 'lax' as const,
-        path: '/auth/refresh',
+        path: '/api/auth/refresh',
         maxAge: this.tokenService.getRefreshTokenMaxAge(),
       },
     };
@@ -441,7 +441,7 @@ export class AuthService {
       },
       refresh: {
         httpOnly: true,
-        path: '/auth/refresh',
+        path: '/api/auth/refresh',
         maxAge: 0,
       },
     };
