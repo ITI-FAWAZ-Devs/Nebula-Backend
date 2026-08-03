@@ -5,6 +5,7 @@ import {
   EmbeddingInputType,
   EmbeddingProvider,
 } from './interfaces/embedding-provider.interface';
+import { withAbortSignal } from './fetch-timeout.util';
 
 /**
  * Bedrock embedding provider backed by the internal SBG gateway.
@@ -41,6 +42,7 @@ export class BedrockGatewayEmbeddingProvider implements EmbeddingProvider {
   private readonly baseUrl: string;
   private readonly candidateModels: string[];
   private readonly defaultDimensions: number;
+  private readonly embeddingTimeoutMs: number;
   private resolutionPromise: Promise<string> | null = null;
   private resolvedModel: string | null = null;
   private resolvedDimensions = 0;
@@ -55,6 +57,8 @@ export class BedrockGatewayEmbeddingProvider implements EmbeddingProvider {
     this.defaultDimensions =
       this.configService.get<number>('aiProvider.bedrockEmbeddingDimensions') ||
       1024;
+    this.embeddingTimeoutMs =
+      this.configService.get<number>('aiProvider.embeddingTimeoutMs') ?? 60000;
 
     if (!this.apiKey) {
       this.logger.warn('SBG_API_KEY is not configured');
@@ -175,18 +179,21 @@ export class BedrockGatewayEmbeddingProvider implements EmbeddingProvider {
     modelId: string,
   ): Promise<number[]> {
     const endpoint = `${this.baseUrl.replace(/\/$/, '')}/student/embed`;
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model_id: modelId,
-        texts: [text],
-        input_type: inputType,
+    const response = await withAbortSignal(this.embeddingTimeoutMs, (signal) =>
+      fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model_id: modelId,
+          texts: [text],
+          input_type: inputType,
+        }),
+        signal,
       }),
-    });
+    );
 
     if (!response.ok) {
       const status = response.status;

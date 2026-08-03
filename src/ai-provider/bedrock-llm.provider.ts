@@ -5,6 +5,7 @@ import {
   LlmProviderOptions,
   LlmProviderResult,
 } from './interfaces/llm-provider.interface';
+import { withAbortSignal } from './fetch-timeout.util';
 
 /**
  * Bedrock chat provider backed by the internal SBG gateway.
@@ -79,6 +80,7 @@ export class BedrockGatewayLlmProvider implements LlmProvider {
   private readonly models: string[];
   private readonly strongModel: string;
   private readonly maxTokens: number;
+  private readonly llmTimeoutMs: number;
 
   constructor(private readonly configService: ConfigService) {
     this.apiKey = this.configService.get<string>('aiProvider.sbgApiKey') || '';
@@ -98,6 +100,8 @@ export class BedrockGatewayLlmProvider implements LlmProvider {
       this.models[0];
     this.maxTokens =
       this.configService.get<number>('aiProvider.bedrockMaxTokens') || 16384;
+    this.llmTimeoutMs =
+      this.configService.get<number>('aiProvider.llmTimeoutMs') ?? 60000;
 
     if (!this.apiKey) {
       this.logger.warn('SBG_API_KEY is not configured');
@@ -172,7 +176,9 @@ export class BedrockGatewayLlmProvider implements LlmProvider {
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
       let response: Response;
       try {
-        response = await fetch(endpoint, requestInit);
+        response = await withAbortSignal(this.llmTimeoutMs, (signal) =>
+          fetch(endpoint, { ...requestInit, signal }),
+        );
       } catch (error) {
         if (attempt < RETRY_ATTEMPTS) {
           this.logger.warn(
