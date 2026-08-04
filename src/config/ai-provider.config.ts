@@ -34,15 +34,15 @@ export default registerAs('aiProvider', () => {
     : 1024;
 
   return {
-    providerOrder: process.env.AI_PROVIDER_ORDER || 'bedrock,gemini',
+    providerOrder: process.env.AI_PROVIDER_ORDER || 'gemini,bedrock',
     llmProviderOrder:
       process.env.LLM_PROVIDER_ORDER ||
       process.env.AI_PROVIDER_ORDER ||
-      'bedrock,gemini',
+      'gemini,bedrock',
     embeddingProviderOrder:
       process.env.EMBEDDING_PROVIDER_ORDER ||
       process.env.AI_PROVIDER_ORDER ||
-      'bedrock,openrouter,gemini',
+      'gemini,bedrock,openrouter',
     sbgApiKey: process.env.SBG_API_KEY || '',
     bedrockGatewayBaseUrl: process.env.BEDROCK_GATEWAY_BASE_URL || '',
     bedrockLlmModels: parseModelList(

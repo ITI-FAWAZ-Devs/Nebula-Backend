@@ -188,6 +188,34 @@ describe('DraftingOrchestratorService', () => {
       expect(result.sections[0].verdict).toBe('removed');
     });
 
+    it('should retain generated content as unverified when verification fails', async () => {
+      const generated: DraftSection = {
+        ...mockSection,
+        verdict: 'unverified',
+        verificationNotes: null,
+      };
+      mockPrisma.repository.findUnique.mockResolvedValue({
+        id: repositoryId,
+        name: 'test-repo',
+        status: 'READY',
+      });
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+      mockStructurePlanner.plan.mockResolvedValue(mockPlan);
+      mockSectionGenerator.generate.mockResolvedValue(generated);
+      mockSectionVerifier.verify.mockRejectedValue(
+        new Error('Verification failed'),
+      );
+
+      const result = await service.draft({ repositoryId, userId: 'user-1' });
+
+      expect(result.sections).toHaveLength(1);
+      expect(result.sections[0].verdict).toBe('unverified');
+      expect(result.sections[0].contentMd).toBe(generated.contentMd);
+      expect(result.sections[0].verificationNotes).toContain(
+        'Verification failed',
+      );
+    });
+
     it('should retain sections when diagram fails', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({
         id: repositoryId,

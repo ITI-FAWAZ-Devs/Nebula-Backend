@@ -240,5 +240,40 @@ The authentication module handles user login [src/auth.ts] and uses a library [s
       );
       expect(prompt).toContain('src/auth.ts: Auth module');
     });
+
+    it('should instruct the LLM to embed verbatim code snippets (US5)', async () => {
+      const enrichedContext: HybridRetrievalContext = {
+        ...mockContext,
+        files: [
+          {
+            ...mockContext.files[0],
+            codeContent: 'export const login = () => {};',
+          },
+        ],
+      };
+      mockCodeContextLoader.enrich.mockResolvedValue(enrichedContext);
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          '# Authentication Module\n\nHandles auth [src/auth.ts].\n\n```typescript\nexport const login = () => {};\n```',
+        ),
+      );
+
+      const result = await service.generate(
+        repositoryId,
+        mockPlan,
+        mockContext,
+        '/workspace/repo',
+      );
+
+      const prompt = mockAiProvider.generateContent.mock.calls[0][0];
+      expect(prompt).toContain('verbatim code snippets');
+      expect(prompt).toContain('[code unavailable]');
+      expect(result.contentMd).toContain('```typescript');
+      expect(result.contentMd).toContain('export const login = () => {};');
+      expect(result.contentMd).toContain('[src/auth.ts]');
+      expect(result.contentMd.startsWith('## Authentication Module')).toBe(
+        true,
+      );
+    });
   });
 });

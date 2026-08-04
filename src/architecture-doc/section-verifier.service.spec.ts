@@ -129,7 +129,7 @@ describe('SectionVerifierService', () => {
 
       expect(result.verdict).toBe('verified');
       expect(result.contentMd).toBe(
-        '## Authentication Module\n\nHandles login.',
+        '## Authentication Module\n\nHandles login.\n',
       );
     });
 
@@ -314,6 +314,114 @@ describe('SectionVerifierService', () => {
       if (result.verdict === 'verified') {
         expect(result.sourceFiles.length).toBeGreaterThanOrEqual(1);
       }
+    });
+
+    it('should keep generated content as unverified when the response is not parseable JSON', async () => {
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          'The section is verified. Relevant files: [README.md], [src/auth.ts], and [package.json].',
+        ),
+      );
+
+      const result = await service.verify(
+        mockSection,
+        mockContext,
+        repositoryId,
+      );
+
+      expect(result.verdict).toBe('unverified');
+      expect(result.contentMd).toBe(mockSection.contentMd + '\n');
+      expect(result.verificationNotes).toContain(
+        'failed to produce a valid response',
+      );
+    });
+
+    it('should self-heal with a corrected response when the first response is malformed', async () => {
+      mockAiProvider.generateContent
+        .mockResolvedValueOnce(
+          llmResult(
+            'The section is verified. Relevant files: [README.md], [src/auth.ts], and [package.json].',
+          ),
+        )
+        .mockResolvedValueOnce(
+          llmResult(
+            JSON.stringify({
+              verdict: 'verified',
+              rewrittenBody: null,
+              notes: null,
+            }),
+          ),
+        );
+
+      const result = await service.verify(
+        mockSection,
+        mockContext,
+        repositoryId,
+      );
+
+      expect(result.verdict).toBe('verified');
+      expect(mockAiProvider.generateContent).toHaveBeenCalledTimes(2);
+    });
+
+    it('should keep generated content as unverified when the follow-up response is not parseable JSON', async () => {
+      mockAiProvider.generateContent
+        .mockResolvedValueOnce(
+          llmResult(
+            JSON.stringify({
+              verdict: 'unverified',
+              rewrittenBody: null,
+              notes: 'Need more evidence about JWT implementation.',
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          llmResult(
+            'Checked [src/jwt.ts] and [package.json]; cannot produce valid JSON.',
+          ),
+        )
+        .mockResolvedValueOnce(
+          llmResult(
+            'Still cannot produce valid JSON. Only [src/jwt.ts] referenced.',
+          ),
+        );
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+
+      const result = await service.verify(
+        mockSection,
+        mockContext,
+        repositoryId,
+      );
+
+      expect(result.verdict).toBe('unverified');
+      expect(result.contentMd).toBe(mockSection.contentMd + '\n');
+      expect(result.verificationNotes).toContain(
+        'failed to produce a valid response',
+      );
+    });
+
+    it('should sanitize a rewritten verified body', async () => {
+      mockAiProvider.generateContent.mockResolvedValue(
+        llmResult(
+          JSON.stringify({
+            verdict: 'verified',
+            rewrittenBody:
+              '# Authentication Module\n\n```typescript\nexport const login = () => {};\n',
+            notes: 'Removed unsupported claims.',
+          }),
+        ),
+      );
+
+      const result = await service.verify(
+        mockSection,
+        mockContext,
+        repositoryId,
+      );
+
+      expect(result.verdict).toBe('verified');
+      expect(result.contentMd).toContain('## Authentication Module');
+      expect(result.contentMd).toContain('export const login = () => {};');
+      const fences = result.contentMd.match(/^```/gm) ?? [];
+      expect(fences).toHaveLength(2);
     });
 
     it('should embed code evidence in the primary verification prompt (US2)', async () => {

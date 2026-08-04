@@ -121,6 +121,7 @@ export class DraftingOrchestratorService {
       this.logger.log(
         `[${repositoryId}] Generating section ${i + 1}/${sectionPlan.length}: ${plan.key}`,
       );
+      let generated: DraftSection | null = null;
       try {
         const context = await this.hybridRetriever.retrieve(repositoryId, {
           topic: plan.retrievalTopic,
@@ -133,7 +134,7 @@ export class DraftingOrchestratorService {
           `[${repositoryId}] Retrieved ${context.files.length} files for "${plan.key}"`,
         );
 
-        const generated = await this.sectionGenerator.generate(
+        generated = await this.sectionGenerator.generate(
           repositoryId,
           plan,
           context,
@@ -166,14 +167,22 @@ export class DraftingOrchestratorService {
           `[${repositoryId}] Failed to process section ${plan.key}: ${(error as Error).message}`,
           (error as Error).stack,
         );
-        sections.push({
-          key: plan.key,
-          title: plan.title,
-          contentMd: '',
-          sourceFiles: [],
-          verdict: 'removed',
-          verificationNotes: `Processing failed: ${(error as Error).message}`,
-        });
+        sections.push(
+          generated
+            ? {
+                ...generated,
+                verdict: 'unverified',
+                verificationNotes: `Processing failed: ${(error as Error).message}`,
+              }
+            : {
+                key: plan.key,
+                title: plan.title,
+                contentMd: '',
+                sourceFiles: [],
+                verdict: 'removed',
+                verificationNotes: `Processing failed: ${(error as Error).message}`,
+              },
+        );
       }
     }
 

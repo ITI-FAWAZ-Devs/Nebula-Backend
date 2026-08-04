@@ -48,7 +48,7 @@ Instructions:
 5. Do NOT invent code that is not shown. For files marked [code unavailable], rely only on their descriptions.
 6. Return a JSON array of SectionPlan objects.
 
-Return ONLY a JSON array in this exact format:
+Return ONLY a single valid JSON array in this exact format, with no other text:
 [
   {
     "key": "section-key",
@@ -58,5 +58,8 @@ Return ONLY a JSON array in this exact format:
   }
 ]
 
-If no evidence is available, return an empty array: []`;
+Strict output rules:
+- Output ONLY the JSON array. Do not include any prose, explanation, markdown code fences, or file references such as [README.md] before or after it.
+- Every key must be double-quoted and every string must use double quotes.
+- If no evidence is available, return an empty array: []`;
 }
