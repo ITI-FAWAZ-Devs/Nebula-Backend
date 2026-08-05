@@ -395,6 +395,40 @@ describe('StructurePlannerService', () => {
       expect(mockAiProvider.generateContent).toHaveBeenCalledTimes(2);
     });
 
+    it('should retry with a JSON correction prompt on malformed JSON', async () => {
+      mockPrisma.repository.findUnique.mockResolvedValue({
+        id: repositoryId,
+        name: 'test-repo',
+        owner: 'test-owner',
+        status: 'READY',
+      });
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+      mockAiProvider.generateContent
+        .mockResolvedValueOnce(
+          llmResult('[README.md], [src/auth.ts] but no valid plan JSON'),
+        )
+        .mockResolvedValueOnce(
+          llmResult(
+            JSON.stringify([
+              {
+                key: 'valid',
+                title: 'Valid',
+                purpose: 'Purpose',
+                retrievalTopic: 'topic',
+              },
+            ]),
+          ),
+        );
+
+      const result = await service.plan(repositoryId);
+
+      expect(result).toHaveLength(1);
+      expect(mockAiProvider.generateContent).toHaveBeenCalledTimes(2);
+      const correctionPrompt = mockAiProvider.generateContent.mock.calls[1][0];
+      expect(correctionPrompt).toContain('was not valid JSON');
+      expect(correctionPrompt).toContain('[README.md], [src/auth.ts]');
+    });
+
     it('should fail after retry on persistent malformed JSON', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({
         id: repositoryId,

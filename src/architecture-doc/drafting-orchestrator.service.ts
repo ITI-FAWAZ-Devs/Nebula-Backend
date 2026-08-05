@@ -13,6 +13,9 @@ import {
   DraftSection,
   ArchitectureDiagram,
 } from './dto/architecture-draft.dto';
+import { buildDependencyGraphSectionContent } from './templates/dependency-graph-section.prompt';
+
+export const DEPENDENCY_GRAPH_SECTION_KEY = 'dependency-graph';
 
 export type DraftProgressReporter = (status: DocStatus) => void | Promise<void>;
 
@@ -112,6 +115,8 @@ export class DraftingOrchestratorService {
     const sections: DraftSection[] = [];
     const allRelationships = [...broadContext.relationships];
     const allClusters = [...broadContext.moduleClusters];
+    const allFiles = new Map<string, { filePath: string }>();
+    broadContext.files.forEach((f) => allFiles.set(f.filePath, f));
 
     await onProgress?.('GENERATING');
 
@@ -121,6 +126,7 @@ export class DraftingOrchestratorService {
       this.logger.log(
         `[${repositoryId}] Generating section ${i + 1}/${sectionPlan.length}: ${plan.key}`,
       );
+      let generated: DraftSection | null = null;
       try {
         const context = await this.hybridRetriever.retrieve(repositoryId, {
           topic: plan.retrievalTopic,
@@ -128,12 +134,13 @@ export class DraftingOrchestratorService {
 
         allRelationships.push(...context.relationships);
         allClusters.push(...context.moduleClusters);
+        context.files.forEach((f) => allFiles.set(f.filePath, f));
 
         this.logger.log(
           `[${repositoryId}] Retrieved ${context.files.length} files for "${plan.key}"`,
         );
 
-        const generated = await this.sectionGenerator.generate(
+        generated = await this.sectionGenerator.generate(
           repositoryId,
           plan,
           context,
@@ -160,20 +167,50 @@ export class DraftingOrchestratorService {
           `[${repositoryId}] Verified "${plan.key}": verdict=${verified.verdict}, notes=${verified.verificationNotes ?? 'null'}`,
         );
 
-        sections.push(verified);
+        let sectionDiagram: ArchitectureDiagram | null = null;
+        try {
+          sectionDiagram = await this.diagramGenerator.generate(
+            context.relationships,
+            context.moduleClusters,
+            [verified],
+            plan.title,
+            context.files,
+          );
+          this.logger.log(
+            `[${repositoryId}] Section diagram "${plan.key}": ${sectionDiagram ? 'present' : 'null'}`,
+          );
+        } catch (diagramError) {
+          this.logger.error(
+            `[${repositoryId}] Failed to generate diagram for "${plan.key}": ${(diagramError as Error).message}`,
+            (diagramError as Error).stack,
+          );
+        }
+
+        sections.push({
+          ...verified,
+          diagramMermaid: sectionDiagram?.mermaidSource ?? null,
+        });
       } catch (error) {
         this.logger.error(
           `[${repositoryId}] Failed to process section ${plan.key}: ${(error as Error).message}`,
           (error as Error).stack,
         );
-        sections.push({
-          key: plan.key,
-          title: plan.title,
-          contentMd: '',
-          sourceFiles: [],
-          verdict: 'removed',
-          verificationNotes: `Processing failed: ${(error as Error).message}`,
-        });
+        sections.push(
+          generated
+            ? {
+                ...generated,
+                verdict: 'unverified',
+                verificationNotes: `Processing failed: ${(error as Error).message}`,
+              }
+            : {
+                key: plan.key,
+                title: plan.title,
+                contentMd: '',
+                sourceFiles: [],
+                verdict: 'removed',
+                verificationNotes: `Processing failed: ${(error as Error).message}`,
+              },
+        );
       }
     }
 
@@ -184,6 +221,8 @@ export class DraftingOrchestratorService {
         allRelationships,
         allClusters,
         sections,
+        undefined,
+        Array.from(allFiles.values()),
       );
       this.logger.log(
         `[${repositoryId}] Diagram: ${diagram ? `present (${diagram.mermaidSource.length} chars, modules=${diagram.modules.length})` : 'null'}`,
@@ -192,6 +231,28 @@ export class DraftingOrchestratorService {
       this.logger.error(
         `[${repositoryId}] Failed to generate diagram: ${(error as Error).message}`,
         (error as Error).stack,
+      );
+    }
+
+    const hasDependencyGraphSection = sectionPlan.some(
+      (p) => p.key === DEPENDENCY_GRAPH_SECTION_KEY,
+    );
+    const hasSectionGraphs = sections.some(
+      (s) => s.diagramMermaid && s.key !== DEPENDENCY_GRAPH_SECTION_KEY,
+    );
+    if (!hasDependencyGraphSection && (diagram != null || hasSectionGraphs)) {
+      const dependencyGraphSection: DraftSection = {
+        key: DEPENDENCY_GRAPH_SECTION_KEY,
+        title: 'Dependency Graph',
+        contentMd: buildDependencyGraphSectionContent(sections),
+        sourceFiles: [],
+        verdict: 'verified',
+        verificationNotes: null,
+        diagramMermaid: diagram?.mermaidSource ?? null,
+      };
+      sections.push(dependencyGraphSection);
+      this.logger.log(
+        `[${repositoryId}] Appended "${dependencyGraphSection.title}" aggregate section (${sections.length} total)`,
       );
     }
 

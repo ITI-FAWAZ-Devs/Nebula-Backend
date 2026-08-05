@@ -8,6 +8,7 @@ export function buildDiagramGenerationPrompt(
   relationships: FileRelationship[],
   clusters: ModuleCluster[],
   sections: DraftSection[],
+  focus?: string,
 ): string {
   const relationshipList = relationships
     .map((r) => `- ${r.fromFilePath} → ${r.toFilePath} (${r.type})`)
@@ -22,6 +23,7 @@ export function buildDiagramGenerationPrompt(
     .join('\n');
 
   return `You are an architecture diagram generator. Create a Mermaid diagram representing the repository's module architecture using ONLY the evidenced modules and relationships.
+${focus ? `\nFocus: This diagram describes the "${focus}" part of the document. Only show the modules and relationships relevant to that part.` : ''}
 
 File relationships:
 ${relationshipList || 'No relationships available'}
@@ -38,6 +40,6 @@ Instructions:
 3. Use meaningful labels for each node.
 4. Show relationships between modules using arrows.
 5. Do NOT invent modules or relationships not present in the evidence.
-
-Return ONLY the Mermaid diagram source code, starting with "flowchart TD" or "graph TD".`;
+6. Return ONLY the raw Mermaid diagram source code, starting with "flowchart TD" or "graph TD".
+7. Do NOT wrap the output in markdown code fences (no \`\`\`mermaid blocks), do NOT add any prose or explanation.`;
 }

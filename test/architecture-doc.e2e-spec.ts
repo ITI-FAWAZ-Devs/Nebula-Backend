@@ -46,6 +46,7 @@ const controlledDraft = {
       sourceFiles: ['src/main.ts'],
       verdict: 'verified' as const,
       verificationNotes: null,
+      diagramMermaid: 'flowchart TD\n  A[main.ts] --> B[app.module.ts]',
     },
     {
       key: 'removed',
@@ -251,7 +252,7 @@ describe('ArchitectureDoc (e2e)', () => {
       order: 0,
       sourceFiles: ['src/main.ts'],
       verified: true,
-      diagramMermaid: controlledDraft.diagram.mermaidSource,
+      diagramMermaid: controlledDraft.sections[0].diagramMermaid,
     });
   });
 

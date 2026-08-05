@@ -5,6 +5,7 @@ import { HybridRetrieverService } from './hybrid-retriever.service';
 import { CodeContextLoaderService } from './code-context-loader.service';
 import { SectionPlan } from './dto/architecture-draft.dto';
 import { buildStructurePlanPrompt } from './templates/structure-plan.prompt';
+import { buildJsonCorrectionPrompt } from './templates/json-correction.prompt';
 import {
   extractJsonFromLlmText,
   validateSectionPlanArray,
@@ -81,10 +82,16 @@ export class StructurePlannerService {
       plans = await extractJsonFromLlmText(response, validateSectionPlanArray);
     } catch (error) {
       this.logger.warn(
-        `Malformed JSON response, retrying: ${(error as Error).message}`,
+        `Malformed JSON response, retrying with correction: ${(error as Error).message}`,
       );
       response = (
-        await this.aiProvider.generateContent(prompt, { tier: 'strong' })
+        await this.aiProvider.generateContent(
+          buildJsonCorrectionPrompt(
+            'an array of objects with keys "key", "title", "purpose", and "retrievalTopic"',
+            response,
+          ),
+          { tier: 'strong' },
+        )
       ).text;
       plans = await extractJsonFromLlmText(response, validateSectionPlanArray);
     }

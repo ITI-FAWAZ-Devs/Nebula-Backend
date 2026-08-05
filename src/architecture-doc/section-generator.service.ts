@@ -5,6 +5,7 @@ import { CodeContextLoaderService } from './code-context-loader.service';
 import { SectionPlan, DraftSection } from './dto/architecture-draft.dto';
 import { HybridRetrievalContext } from './dto/hybrid-retrieval-context.dto';
 import { buildSectionGenerationPrompt } from './templates/section-generation.prompt';
+import { sanitizeSectionMarkdown } from './utils/markdown.util';
 
 /**
  * Phase 2 internal drafting pipeline component.
@@ -49,7 +50,7 @@ export class SectionGeneratorService {
     return {
       key: plan.key,
       title: plan.title,
-      contentMd: response,
+      contentMd: sanitizeSectionMarkdown(response),
       sourceFiles,
       verdict: 'unverified',
       verificationNotes: null,

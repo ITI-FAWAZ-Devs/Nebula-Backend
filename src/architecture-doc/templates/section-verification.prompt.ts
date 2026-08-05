@@ -41,14 +41,20 @@ Instructions:
 4. For each claim, determine if it is supported, unsupported, or unverifiable.
 5. If a claim contradicts the provided source code, it must be removed or the section marked unverified.
 6. If a citation does not exist in the evidence, it must be rejected.
-7. Do not treat [code unavailable] files as evidence of implementation details; rely only on their descriptions.
+7. Check every code snippet embedded in the section: it must appear VERBATIM in the provided source code evidence, and its [filePath] citation must match the file the code was actually taken from. Paraphrased, fabricated, mis-cited, or [code unavailable] snippets must be removed or the section marked unverified.
+8. Do not treat [code unavailable] files as evidence of implementation details; rely only on their descriptions.
 
-Return a JSON object in this exact format:
+Return ONLY a single valid JSON object in this exact format, with no other text:
 {
   "verdict": "verified" | "unverified" | "removed",
   "rewrittenBody": "optional rewritten section body with unsupported claims removed",
   "notes": "explanation of verification outcome, null if verified"
 }
+
+Strict output rules:
+- Output ONLY the JSON object. Do not include any prose, explanation, markdown code fences, or file references such as [README.md] before or after it.
+- Keep any file path references inside the JSON string values only.
+- Every key must be double-quoted, every string must use double quotes, booleans/null are lowercase, and there must be no trailing commas.
 
 If all claims are supported, set verdict to "verified" and notes to null.
 If some claims are unsupported, you may rewrite the body to remove them and keep verdict "verified", or set verdict to "unverified" with notes explaining which claims lack support.

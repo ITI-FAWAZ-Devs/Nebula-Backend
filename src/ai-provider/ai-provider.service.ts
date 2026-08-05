@@ -29,8 +29,8 @@ import { isTransientFailure } from './fallback-classifier.util';
  * Single entry point for every LLM and embedding call in the app.
  *
  * LLM and embedding chains are configured independently:
- * `LLM_PROVIDER_ORDER` (default `bedrock,gemini`) and
- * `EMBEDDING_PROVIDER_ORDER` (default `bedrock,openrouter,gemini`). The legacy
+ * `LLM_PROVIDER_ORDER` (default `gemini,bedrock`) and
+ * `EMBEDDING_PROVIDER_ORDER` (default `gemini,bedrock,openrouter`). The legacy
  * `AI_PROVIDER_ORDER` is honored when the per-capability vars are absent.
  *
  * Each chain tries the primary provider first and falls back to the next
@@ -69,12 +69,12 @@ export class AiProviderService {
     this.llmOrder = parseOrder(
       this.configService.get<string>('aiProvider.llmProviderOrder') ||
         legacyOrder,
-      'bedrock,gemini',
+      'gemini,bedrock',
     );
     this.embeddingOrder = parseOrder(
       this.configService.get<string>('aiProvider.embeddingProviderOrder') ||
         legacyOrder,
-      'bedrock,openrouter,gemini',
+      'gemini,bedrock,openrouter',
     );
 
     const llmRegistry: Record<string, LlmProvider> = {

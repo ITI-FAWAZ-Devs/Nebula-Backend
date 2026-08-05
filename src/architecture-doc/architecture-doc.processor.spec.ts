@@ -29,6 +29,7 @@ describe('ArchitectureDocProcessor', () => {
         sourceFiles: ['src/main.ts'],
         verdict: 'verified',
         verificationNotes: null,
+        diagramMermaid: 'flowchart TD\n  A --> B',
       },
       {
         key: 'removed-section',
@@ -45,6 +46,7 @@ describe('ArchitectureDocProcessor', () => {
         sourceFiles: ['src/auth.ts'],
         verdict: 'unverified',
         verificationNotes: 'Needs review',
+        diagramMermaid: null,
       },
     ],
     diagram: {
@@ -157,7 +159,7 @@ describe('ArchitectureDocProcessor', () => {
     });
   });
 
-  it('should persist ordered section data and store diagram on first section', async () => {
+  it('should persist ordered section data with per-section diagrams', async () => {
     mockDraftingOrchestrator.draft.mockResolvedValue(mockDraft);
 
     await processor.process(createJob());
@@ -167,6 +169,7 @@ describe('ArchitectureDocProcessor', () => {
     expect(createManyCall.data[0].order).toBe(0);
     expect(createManyCall.data[1].order).toBe(1);
     expect(createManyCall.data[0].diagramMermaid).toContain('flowchart');
+    expect(createManyCall.data[1].diagramMermaid).toBeNull();
   });
 
   it('should report GENERATING and VERIFYING through progress callback', async () => {
