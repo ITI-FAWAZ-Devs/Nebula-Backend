@@ -28,11 +28,36 @@ export class OrganizationsService {
         data: { name, ownerId: userId },
       });
 
+      // Create default roles
       const ownerRole = await tx.role.create({
         data: {
           orgId: org.id,
           name: 'Owner',
           permissions: [...ALL_PERMISSIONS],
+        },
+      });
+
+      await tx.role.create({
+        data: {
+          orgId: org.id,
+          name: 'Developer',
+          permissions: ['repo:read', 'docs:read', 'task:read'],
+        },
+      });
+
+      await tx.role.create({
+        data: {
+          orgId: org.id,
+          name: 'Team Manager',
+          permissions: [
+            'repo:read',
+            'repo:import',
+            'docs:read',
+            'docs:write',
+            'task:read',
+            'task:write',
+            'member:invite',
+          ],
         },
       });
 

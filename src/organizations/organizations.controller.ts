@@ -316,4 +316,29 @@ export class OrganizationsController {
       data: result,
     };
   }
+
+  // ── Organization Repositories ──
+
+  /**
+   * GET /organizations/:id/repositories
+   * Lists all repositories that belong to the organization.
+   * Requires the caller to be an active member of the org.
+   */
+  @Get(':id/repositories')
+  async listOrgRepositories(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) orgId: string,
+  ) {
+    // Verify membership (getOrganization throws if not a member)
+    await this.organizationsService.getOrganization(orgId, userId);
+    const repos = await this.prisma.repository.findMany({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return {
+      success: true,
+      message: 'Organization repositories retrieved successfully',
+      data: repos,
+    };
+  }
 }
