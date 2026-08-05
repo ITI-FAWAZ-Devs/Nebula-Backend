@@ -76,8 +76,6 @@ export class ArchitectureDocProcessor extends WorkerHost {
 
       await this.prisma.$transaction(async (tx) => {
         if (persistedSections.length > 0) {
-          const diagramMermaid = draft.diagram?.mermaidSource ?? null;
-
           await tx.docSection.createMany({
             data: persistedSections.map((section, index) => ({
               docId: documentId,
@@ -86,7 +84,7 @@ export class ArchitectureDocProcessor extends WorkerHost {
               order: index,
               contentMd: section.contentMd,
               sourceFiles: section.sourceFiles,
-              diagramMermaid: index === 0 ? diagramMermaid : null,
+              diagramMermaid: section.diagramMermaid ?? null,
               verified: section.verdict === 'verified',
               verificationNotes: section.verificationNotes,
             })),

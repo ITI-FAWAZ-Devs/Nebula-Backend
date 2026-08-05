@@ -120,6 +120,11 @@ describe('Drafting Pipeline Integration', () => {
         aiLlmResult(
           'flowchart TD\n    A[main.ts] --> B[app.module.ts]\n    B --> C[app.service.ts]',
         ),
+      )
+      .mockResolvedValueOnce(
+        aiLlmResult(
+          'flowchart TD\n    A[Application Core] --> B[Application Overview]',
+        ),
       );
   });
 
@@ -172,6 +177,33 @@ describe('Drafting Pipeline Integration', () => {
 
     if (result.diagram) {
       expect(result.diagram.mermaidSource).toMatch(/^(flowchart|graph)\s/);
+    }
+  });
+
+  it('should attach a per-section diagram and aggregate Dependency Graph section', async () => {
+    if (!RUN_INTEGRATION) {
+      console.log(
+        'Skipping integration test: RUN_DRAFTING_PIPELINE_INTEGRATION not set',
+      );
+      return;
+    }
+
+    const result = await orchestrator.draft({ repositoryId });
+
+    const graphSection = result.sections.find(
+      (s) => s.key === 'dependency-graph',
+    );
+    expect(graphSection).toBeDefined();
+    expect(graphSection!.diagramMermaid).toMatch(/^(flowchart|graph)\s/);
+    expect(graphSection!.contentMd).toContain('```mermaid');
+
+    const regularSections = result.sections.filter(
+      (s) => s.key !== 'dependency-graph',
+    );
+    for (const section of regularSections) {
+      if (section.verdict === 'verified' && section.contentMd.length > 0) {
+        expect(section.diagramMermaid).toMatch(/^(flowchart|graph)\s/);
+      }
     }
   });
 });

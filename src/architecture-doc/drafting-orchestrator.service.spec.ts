@@ -122,6 +122,7 @@ describe('DraftingOrchestratorService', () => {
     mockCodeContextLoader.ensureClone.mockResolvedValue(
       '/workspace/draft-repo-123',
     );
+    mockDiagramGenerator.generate.mockResolvedValue(null);
   });
 
   it('should be defined', () => {
@@ -151,8 +152,41 @@ describe('DraftingOrchestratorService', () => {
       const result = await service.draft({ repositoryId, userId: 'user-1' });
 
       expect(result.repositoryId).toBe(repositoryId);
-      expect(result.sections).toHaveLength(1);
+      expect(result.sections).toHaveLength(2);
+      expect(result.sections[0].diagramMermaid).toContain('flowchart');
+      expect(result.sections[1]).toMatchObject({
+        key: 'dependency-graph',
+        title: 'Dependency Graph',
+        verdict: 'verified',
+        diagramMermaid: 'flowchart TD\n    A --> B',
+      });
+      expect(result.sections[1].contentMd).toContain('```mermaid');
       expect(result.diagram).not.toBeNull();
+    });
+
+    it('should generate a per-section diagram scoped to the section context', async () => {
+      mockPrisma.repository.findUnique.mockResolvedValue({
+        id: repositoryId,
+        name: 'test-repo',
+        status: 'READY',
+      });
+      mockHybridRetriever.retrieve.mockResolvedValue(mockContext);
+      mockStructurePlanner.plan.mockResolvedValue(mockPlan);
+      mockSectionGenerator.generate.mockResolvedValue(mockSection);
+      mockSectionVerifier.verify.mockResolvedValue(mockSection);
+      mockDiagramGenerator.generate.mockResolvedValue({
+        mermaidSource: 'flowchart TD\n    A --> B',
+        modules: ['Auth Module'],
+        verdict: 'verified',
+        verificationNotes: null,
+      });
+
+      await service.draft({ repositoryId, userId: 'user-1' });
+
+      const generateCalls = mockDiagramGenerator.generate.mock.calls;
+      expect(generateCalls).toHaveLength(2);
+      expect(generateCalls[0][3]).toBe('Authentication Module');
+      expect(generateCalls[1][3]).toBeUndefined();
     });
 
     it('should return empty draft when planning produces no sections', async () => {
@@ -301,8 +335,9 @@ describe('DraftingOrchestratorService', () => {
         userId: 'user-1',
       });
 
-      expect(result.sections).toHaveLength(1);
+      expect(result.sections).toHaveLength(2);
       expect(result.sections[0].verdict).toBe('verified');
+      expect(result.sections[1].key).toBe('dependency-graph');
       expect(result.diagram).not.toBeNull();
     });
 
@@ -357,8 +392,9 @@ describe('DraftingOrchestratorService', () => {
         'VERIFYING',
       ]);
       expect(result.repositoryId).toBe(repositoryId);
-      expect(result.sections).toHaveLength(1);
+      expect(result.sections).toHaveLength(2);
       expect(result.sections[0].verdict).toBe('verified');
+      expect(result.sections[1].key).toBe('dependency-graph');
       expect(result.diagram).not.toBeNull();
     });
   });

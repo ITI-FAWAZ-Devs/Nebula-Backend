@@ -14,6 +14,7 @@ export interface DraftSection {
   sourceFiles: string[];
   verdict: VerificationVerdict;
   verificationNotes: string | null;
+  diagramMermaid?: string | null;
 }
 
 export interface ArchitectureDiagram {
