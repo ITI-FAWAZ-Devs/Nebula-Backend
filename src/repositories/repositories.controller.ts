@@ -116,10 +116,14 @@ export class RepositoriesController {
   /**
    * GET /repositories
    * Lists the user's imported repositories from the database.
+   * Optionally filter by organizationId to get org-scoped repos.
    */
   @Get()
-  async listImportedRepos(@CurrentUser('id') userId: string) {
-    const repos = await this.repositoriesService.listImported(userId);
+  async listImportedRepos(
+    @CurrentUser('id') userId: string,
+    @Query('organizationId') organizationId?: string,
+  ) {
+    const repos = await this.repositoriesService.listImported(userId, organizationId);
     return {
       success: true,
       message: 'Imported repositories retrieved successfully',
