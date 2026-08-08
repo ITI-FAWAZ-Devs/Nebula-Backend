@@ -16,6 +16,7 @@ import chromaConfig from './chroma.config';
 import aiProviderConfig from './ai-provider.config';
 import documentationConfig from './documentation.config';
 import draftingConfig from './drafting.config';
+import subscriptionConfig from './subscription.config';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import draftingConfig from './drafting.config';
         aiProviderConfig,
         documentationConfig,
         draftingConfig,
+        subscriptionConfig,
       ],
       envFilePath: ['.env'],
     }),

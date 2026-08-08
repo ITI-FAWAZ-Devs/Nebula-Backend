@@ -31,6 +31,7 @@ export class StructurePlannerService {
   async plan(
     repositoryId: string,
     codeRootPath?: string | null,
+    options?: { overrideModel?: string },
   ): Promise<SectionPlan[]> {
     const repository = await this.prisma.repository.findUnique({
       where: { id: repositoryId },
@@ -68,7 +69,10 @@ export class StructurePlannerService {
     let response: string;
     try {
       response = (
-        await this.aiProvider.generateContent(prompt, { tier: 'strong' })
+        await this.aiProvider.generateContent(prompt, {
+          tier: 'strong',
+          overrideModel: options?.overrideModel,
+        })
       ).text;
     } catch (error) {
       this.logger.error(
@@ -90,7 +94,7 @@ export class StructurePlannerService {
             'an array of objects with keys "key", "title", "purpose", and "retrievalTopic"',
             response,
           ),
-          { tier: 'strong' },
+          { tier: 'strong', overrideModel: options?.overrideModel },
         )
       ).text;
       plans = await extractJsonFromLlmText(response, validateSectionPlanArray);

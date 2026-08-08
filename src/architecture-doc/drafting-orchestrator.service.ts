@@ -63,6 +63,15 @@ export class DraftingOrchestratorService {
       `[${repositoryId}] Starting draft for "${repository.name}"`,
     );
 
+    let docModel: string | undefined;
+    if (request.documentId) {
+      const doc = await this.prisma.generatedDoc.findUnique({
+        where: { id: request.documentId },
+        select: { model: true },
+      });
+      docModel = doc?.model || undefined;
+    }
+
     const codeRootPath = await this.codeContextLoader.ensureClone(
       repositoryId,
       userId,
@@ -86,6 +95,7 @@ export class DraftingOrchestratorService {
     const sectionPlan = await this.structurePlanner.plan(
       repositoryId,
       codeRootPath,
+      { overrideModel: docModel },
     );
 
     this.logger.log(
@@ -145,6 +155,7 @@ export class DraftingOrchestratorService {
           plan,
           context,
           codeRootPath,
+          { overrideModel: docModel },
         );
 
         this.logger.log(
@@ -161,6 +172,7 @@ export class DraftingOrchestratorService {
           context,
           repositoryId,
           codeRootPath,
+          { overrideModel: docModel },
         );
 
         this.logger.log(

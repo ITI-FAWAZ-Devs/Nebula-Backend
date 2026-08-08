@@ -165,7 +165,7 @@ describe('BedrockGatewayLlmProvider', () => {
     );
   });
 
-  it('should try models in order and succeed on the second model', async () => {
+  it('should use the primary model and throw immediately on error', async () => {
     mockConfigService.get.mockImplementation((key: string) => {
       const values: Record<string, string | number | string[]> = {
         'aiProvider.sbgApiKey': apiKey,
@@ -173,62 +173,19 @@ describe('BedrockGatewayLlmProvider', () => {
         'aiProvider.bedrockLlmModels': [
           'model-alpha',
           'model-beta',
-          'model-gamma',
         ],
         'aiProvider.bedrockMaxTokens': 16384,
       };
       return values[key];
     });
     const fetchMock = createFetchMock();
-    fetchMock
-      .mockResolvedValueOnce(errorResponse(502))
-      .mockResolvedValueOnce(chatResponse('from-beta'));
+    fetchMock.mockResolvedValueOnce(errorResponse(502));
     global.fetch = fetchMock;
     const provider = buildProvider();
 
-    const result = await provider.generateContent('prompt');
-
-    expect(result).toEqual({ text: 'from-beta', model: 'model-beta' });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const modelIds = fetchMock.mock.calls.map(
-      ([, init]) =>
-        (JSON.parse(init.body as string) as { model_id: string }).model_id,
-    );
-    expect(modelIds).toEqual(['model-alpha', 'model-beta']);
-  });
-
-  it('should try every model and throw the last error when all fail', async () => {
-    mockConfigService.get.mockImplementation((key: string) => {
-      const values: Record<string, string | number | string[]> = {
-        'aiProvider.sbgApiKey': apiKey,
-        'aiProvider.bedrockGatewayBaseUrl': baseUrl,
-        'aiProvider.bedrockLlmModels': ['model-alpha', 'model-beta'],
-        'aiProvider.bedrockMaxTokens': 16384,
-      };
-      return values[key];
-    });
-    const fetchMock = createFetchMock();
-    fetchMock
-      .mockResolvedValueOnce(errorResponse(503))
-      .mockResolvedValueOnce(errorResponse(502));
-    global.fetch = fetchMock;
-    const provider = buildProvider();
-
-    let caught: (Error & { status?: number }) | undefined;
-    try {
-      await provider.generateContent('prompt');
-      throw new Error('expected generateContent to reject');
-    } catch (e) {
-      caught = e as Error & { status?: number };
-    }
-
-    expect(caught).toBeInstanceOf(Error);
-    expect(caught?.status).toBe(502);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const modelIds = fetchMock.mock.calls.map(
-      ([, init]) =>
-        (JSON.parse(init.body as string) as { model_id: string }).model_id,
-    );
-    expect(modelIds).toEqual(['model-alpha', 'model-beta']);
+    await expect(provider.generateContent('prompt')).rejects.toThrow('status 502');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const modelId = (JSON.parse(fetchMock.mock.calls[0][1].body as string) as { model_id: string }).model_id;
+    expect(modelId).toBe('model-alpha');
   });
 });

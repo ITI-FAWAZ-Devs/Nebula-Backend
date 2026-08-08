@@ -4,6 +4,7 @@ import { DEFAULT_BEDROCK_EMBEDDING_MODELS } from '../config/ai-provider.config';
 import {
   EmbeddingInputType,
   EmbeddingProvider,
+  EmbeddingProviderOptions,
 } from './interfaces/embedding-provider.interface';
 import { withAbortSignal } from './fetch-timeout.util';
 
@@ -81,17 +82,19 @@ export class BedrockGatewayEmbeddingProvider implements EmbeddingProvider {
   async embedString(
     text: string,
     inputType?: EmbeddingInputType,
+    options?: EmbeddingProviderOptions,
   ): Promise<number[]> {
-    const [embedding] = await this.embedMany([text], inputType);
+    const [embedding] = await this.embedMany([text], inputType, options);
     return embedding;
   }
 
   async embedMany(
     texts: string[],
     inputType: EmbeddingInputType = 'search_document',
+    options?: EmbeddingProviderOptions,
   ): Promise<number[][]> {
     if (texts.length === 0) return [];
-    const modelId = await this.ensureResolved();
+    const modelId = options?.overrideModel || (await this.ensureResolved());
 
     if (texts.length === 1) {
       return [await this.embedOne(texts[0], inputType, modelId)];
@@ -127,42 +130,27 @@ export class BedrockGatewayEmbeddingProvider implements EmbeddingProvider {
   }
 
   private async resolveModels(): Promise<string> {
-    let lastError: unknown;
-    for (const model of this.candidateModels) {
-      try {
-        const vector = await this.requestEmbedding(
-          'probe',
-          'search_document',
-          model,
-        );
-        this.resolvedDimensions = vector.length;
-        if (model !== this.candidateModels[0]) {
-          this.logger.warn(
-            `Bedrock embedding resolved to "${model}" (primary "${this.candidateModels[0]}" unavailable). ${vector.length}-dim vectors — previously indexed vectors may live in a different model space.`,
-          );
-        } else {
-          this.logger.log(
-            `Bedrock embedding model resolved: ${model} (${vector.length} dims)`,
-          );
-        }
-        return model;
-      } catch (error) {
-        lastError = error;
-        this.logger.warn(
-          `Bedrock embedding model "${model}" unavailable: ${(error as Error).message}`,
-        );
-      }
+    const model = this.candidateModels[0];
+    if (!model) {
+      throw new Error('No Bedrock embedding model configured');
     }
-
-    // No candidate model worked. Mark the aggregate failure as transient so
-    // AiProviderService falls through to the next provider (Gemini →
-    // quarantine) instead of killing the pipeline; per-model failures are
-    // already logged above for visibility.
-    const aggregate = new Error(
-      `No Bedrock embedding model resolved (tried: ${this.candidateModels.join(', ')}). Last failure: ${(lastError as Error)?.message ?? 'unknown'}`,
-    ) as Error & { name?: string };
-    aggregate.name = 'ServiceUnavailableException';
-    throw aggregate;
+    try {
+      const vector = await this.requestEmbedding(
+        'probe',
+        'search_document',
+        model,
+      );
+      this.resolvedDimensions = vector.length;
+      this.logger.log(
+        `Bedrock embedding model resolved: ${model} (${vector.length} dims)`,
+      );
+      return model;
+    } catch (error) {
+      this.logger.error(
+        `Bedrock embedding model "${model}" failed: ${(error as Error).message}`,
+      );
+      throw error;
+    }
   }
 
   private async embedOne(

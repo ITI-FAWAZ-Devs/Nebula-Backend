@@ -21,6 +21,7 @@ import { ArchitectureDocService } from './architecture-doc.service';
 import { ArchitectureDocProcessor } from './architecture-doc.processor';
 import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.service';
 import { GeminiModule } from 'src/gemini/gemini.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { GeminiModule } from 'src/gemini/gemini.module';
     ProgressModule,
     RepositoriesModule,
     GitModule,
+    SubscriptionModule,
   ],
   controllers: [ArchitectureDocController],
   providers: [

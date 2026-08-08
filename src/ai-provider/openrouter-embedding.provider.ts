@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DEFAULT_OPENROUTER_EMBEDDING_MODEL } from '../config/ai-provider.config';
-import { EmbeddingProvider } from './interfaces/embedding-provider.interface';
+import {
+  EmbeddingInputType,
+  EmbeddingProvider,
+  EmbeddingProviderOptions,
+} from './interfaces/embedding-provider.interface';
 import { withAbortSignal } from './fetch-timeout.util';
 
 /**
@@ -63,18 +67,28 @@ export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
     return this.resolvedDimensions || this.defaultDimensions || 0;
   }
 
-  async embedString(text: string): Promise<number[]> {
-    const [embedding] = await this.embedMany([text]);
+  async embedString(
+    text: string,
+    inputType?: EmbeddingInputType,
+    options?: EmbeddingProviderOptions,
+  ): Promise<number[]> {
+    const [embedding] = await this.embedMany([text], inputType, options);
     return embedding;
   }
 
-  async embedMany(texts: string[]): Promise<number[][]> {
+  async embedMany(
+    texts: string[],
+    inputType?: EmbeddingInputType,
+    options?: EmbeddingProviderOptions,
+  ): Promise<number[][]> {
     if (texts.length === 0) return [];
     if (!this.apiKey) {
       throw new Error(
         'OpenRouter is not configured (OPENROUTER_API_KEY missing)',
       );
     }
+
+    const modelToUse = options?.overrideModel || this.modelId;
 
     const response = await withAbortSignal(this.embeddingTimeoutMs, (signal) =>
       fetch('https://openrouter.ai/api/v1/embeddings', {
@@ -83,7 +97,7 @@ export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ model: this.modelId, input: texts }),
+        body: JSON.stringify({ model: modelToUse, input: texts }),
         signal,
       }),
     );

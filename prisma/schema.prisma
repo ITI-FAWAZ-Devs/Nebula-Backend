@@ -14,14 +14,25 @@ enum AuthProvider {
   MICROSOFT
 }
 
+enum SubscriptionTier {
+  FREE
+  PRO
+  ULTRA
+}
+
 model User {
-  id              String   @id @default(uuid())
-  email           String   @unique
-  password        String?
-  fullName        String?
-  avatar          String?
-  isEmailVerified Boolean  @default(false)
-  refreshToken    String?
+  id                      String           @id @default(uuid())
+  email                   String           @unique
+  password                String?
+  fullName                String?
+  avatar                  String?
+  isEmailVerified         Boolean          @default(false)
+  refreshToken            String?
+  subscriptionTier        SubscriptionTier @default(FREE)
+  currentPeriodStart      DateTime         @default(now())
+  currentPeriodEnd        DateTime?
+  generationsUsedThisPeriod Int            @default(0)
+  totalGenerationsUsed    Int              @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -33,6 +44,7 @@ model User {
   githubToken         UserGithubToken?
   ownedOrganizations  Organization[]
   memberships         OrganizationMember[]
+  usageLogs           UsageLog[]
 
   @@map("users")
 }
@@ -292,3 +304,20 @@ model DocumentationJob {
   @@index([repositoryId])
   @@map("documentation_jobs")
 }
+
+model UsageLog {
+  id              String           @id @default(uuid())
+  userId          String
+  repositoryId    String?
+  jobType         String
+  tierAtExecution SubscriptionTier
+  llmModel        String?
+  embeddingModel  String?
+  createdAt       DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("usage_logs")
+}
+

@@ -2,6 +2,7 @@ export type LlmModelTier = 'standard' | 'strong';
 
 export interface LlmProviderOptions {
   tier?: LlmModelTier;
+  overrideModel?: string;
 }
 
 export interface LlmProviderResult {

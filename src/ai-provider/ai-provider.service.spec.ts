@@ -138,57 +138,13 @@ describe('AiProviderService', () => {
       expect(result.tier).toBe('strong');
     });
 
-    it('should fall back to bedrock on transient gemini failure', async () => {
+    it('should throw immediately on primary provider failure without falling back', async () => {
       mockGeminiLlm.generateContent.mockRejectedValue(transientError());
-      mockBedrockLlm.generateContent.mockResolvedValue({
-        text: 'bedrock answer',
-        model: 'bedrock-model',
-      });
-
-      const result = await service.generateContent('prompt');
-
-      expect(result.text).toBe('bedrock answer');
-      expect(result.provider).toBe('bedrock');
-      expect(result.fallbackOccurred).toBe(true);
-    });
-
-    it('should fall back to bedrock on a transient gemini gateway failure', async () => {
-      mockGeminiLlm.generateContent.mockRejectedValue(
-        Object.assign(new Error('Gemini chat request failed'), {
-          status: 502,
-        }),
-      );
-      mockBedrockLlm.generateContent.mockResolvedValue({
-        text: 'bedrock answer',
-        model: 'bedrock-model',
-      });
-
-      const result = await service.generateContent('prompt');
-
-      expect(result.text).toBe('bedrock answer');
-      expect(result.provider).toBe('bedrock');
-      expect(result.fallbackOccurred).toBe(true);
-    });
-
-    it('should not fall back on a non-transient gemini failure', async () => {
-      const nonTransient = Object.assign(new Error('invalid request'), {
-        statusCode: 400,
-      });
-      mockGeminiLlm.generateContent.mockRejectedValue(nonTransient);
-
-      await expect(service.generateContent('prompt')).rejects.toThrow(
-        'invalid request',
-      );
-      expect(mockBedrockLlm.generateContent).not.toHaveBeenCalled();
-    });
-
-    it('should throw when every provider fails with a transient error', async () => {
-      mockGeminiLlm.generateContent.mockRejectedValue(transientError());
-      mockBedrockLlm.generateContent.mockRejectedValue(transientError());
 
       await expect(service.generateContent('prompt')).rejects.toThrow(
         'upstream unavailable',
       );
+      expect(mockBedrockLlm.generateContent).not.toHaveBeenCalled();
     });
 
     it('should throw when the order resolves to no LLM providers', async () => {
@@ -228,6 +184,7 @@ describe('AiProviderService', () => {
       expect(mockGeminiEmbedding.embedMany).toHaveBeenCalledWith(
         ['a', 'b'],
         'search_document',
+        expect.anything(),
       );
       expect(result.provider).toBe('gemini');
       expect(result.model).toBe('gemini-embed-model');
@@ -247,46 +204,16 @@ describe('AiProviderService', () => {
       expect(mockGeminiEmbedding.embedMany).toHaveBeenCalledWith(
         ['q'],
         'search_query',
+        expect.anything(),
       );
       expect(result.dimensions).toBe(768);
     });
 
-    it('should fall back to bedrock embeddings on a transient failure', async () => {
+    it('should throw immediately when embedding fails without falling back', async () => {
       mockGeminiEmbedding.embedMany.mockRejectedValue(transientError());
-      mockBedrockEmbedding.embedMany.mockResolvedValue([[0.9, 0.8]]);
 
-      const result = await service.embedMany(['a']);
-
-      expect(result.provider).toBe('bedrock');
-      expect(result.dimensions).toBe(1024);
-      expect(result.fallbackOccurred).toBe(true);
-    });
-
-    it('should fall back to openrouter when gemini and bedrock both fail', async () => {
-      openrouterKey = 'or-key';
-      service = await buildService();
-      mockGeminiEmbedding.embedMany.mockRejectedValue(transientError());
-      mockBedrockEmbedding.embedMany.mockRejectedValue(transientError());
-      mockOpenRouterEmbedding.embedMany.mockResolvedValue([[0.7, 0.8]]);
-
-      const result = await service.embedMany(['a']);
-
-      expect(mockOpenRouterEmbedding.embedMany).toHaveBeenCalledWith(
-        ['a'],
-        'search_document',
-      );
-      expect(result.provider).toBe('openrouter');
-      expect(result.fallbackOccurred).toBe(true);
-    });
-
-    it('should skip openrouter when OPENROUTER_API_KEY is missing', async () => {
-      mockGeminiEmbedding.embedMany.mockRejectedValue(transientError());
-      mockBedrockEmbedding.embedMany.mockResolvedValue([[0.9, 0.8]]);
-
-      const result = await service.embedMany(['a']);
-
-      expect(mockOpenRouterEmbedding.embedMany).not.toHaveBeenCalled();
-      expect(result.provider).toBe('bedrock');
+      await expect(service.embedMany(['a'])).rejects.toThrow('upstream unavailable');
+      expect(mockBedrockEmbedding.embedMany).not.toHaveBeenCalled();
     });
 
     it('should serve openrouter first when EMBEDDING_PROVIDER_ORDER puts it first', async () => {
@@ -320,6 +247,7 @@ describe('AiProviderService', () => {
       expect(mockGeminiEmbedding.embedMany).toHaveBeenCalledWith(
         ['hello'],
         'search_query',
+        expect.anything(),
       );
       expect(result.embedding).toEqual([0.1, 0.2]);
       expect(result.provider).toBe('gemini');

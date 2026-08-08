@@ -20,7 +20,7 @@ export class GeminiLlmProvider implements LlmProvider {
     private readonly gemini: GeminiService,
   ) {
     this.modelName =
-      this.configService.get<string>('gemini.llmModel') || 'gemini-2.5-flash';
+      this.configService.get<string>('gemini.llmModel') || 'gemini-3.6-flash';
   }
 
   async generateContent(prompt: string): Promise<LlmProviderResult> {

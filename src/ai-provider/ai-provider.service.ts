@@ -135,12 +135,26 @@ export class AiProviderService {
    */
   async generateContent(
     prompt: string,
-    options?: LlmProviderOptions,
+    options?: LlmProviderOptions & { overrideProvider?: string },
   ): Promise<AiLlmResult> {
     const tier = options?.tier ?? 'standard';
-    const resolvedOptions: LlmProviderOptions = { tier };
+    const resolvedOptions: LlmProviderOptions = {
+      tier,
+      overrideModel: options?.overrideModel,
+    };
+
+    let providersToUse = this.llmProviders;
+    if (options?.overrideProvider) {
+      const targetName = options.overrideProvider.toLowerCase();
+      providersToUse = this.llmProviders.filter((p) => p.name === targetName);
+      if (providersToUse.length === 0) {
+        // Fallback to all providers if target not found
+        providersToUse = this.llmProviders;
+      }
+    }
+
     return this.executeChain(
-      this.llmProviders,
+      providersToUse,
       async (provider, index) => {
         const started = Date.now();
         const providerResult = await provider.generateContent(
@@ -166,7 +180,7 @@ export class AiProviderService {
   async describeFile(
     filePath: string,
     content: string,
-    options?: LlmProviderOptions,
+    options?: LlmProviderOptions & { overrideProvider?: string },
   ): Promise<AiLlmResult> {
     const prompt = buildFileDescriptionPrompt(filePath, content);
     return this.generateContent(prompt, options);
@@ -178,7 +192,7 @@ export class AiProviderService {
   async answerQuestion(
     question: string,
     context: string,
-    options?: LlmProviderOptions,
+    options?: LlmProviderOptions & { overrideProvider?: string },
   ): Promise<AiLlmResult> {
     const prompt = buildAnswerQuestionPrompt(question, context);
     return this.generateContent(prompt, options);
@@ -195,6 +209,7 @@ export class AiProviderService {
   async embedMany(
     texts: string[],
     inputType: EmbeddingInputType = 'search_document',
+    options?: { overrideProvider?: string; overrideModel?: string },
   ): Promise<AiEmbeddingBatchResult> {
     if (texts.length === 0) {
       return {
@@ -207,15 +222,28 @@ export class AiProviderService {
       };
     }
 
+    let providersToUse = this.embeddingProviders;
+    if (options?.overrideProvider) {
+      const targetName = options.overrideProvider.toLowerCase();
+      const matched = this.embeddingProviders.filter((p) => p.name === targetName);
+      if (matched.length > 0) {
+        providersToUse = matched;
+      }
+    }
+
     return this.executeChain(
-      this.embeddingProviders,
+      providersToUse,
       async (provider, index) => {
         const started = Date.now();
-        const embeddings = await provider.embedMany(texts, inputType);
+        const embeddings = await provider.embedMany(texts, inputType, {
+          overrideModel: options?.overrideModel,
+        });
+        const modelName = options?.overrideModel || provider.model;
+        const dims = embeddings[0]?.length || provider.dimensions;
         return {
           embeddings,
-          model: provider.model,
-          dimensions: provider.dimensions,
+          model: modelName,
+          dimensions: dims,
           provider: provider.name,
           latencyMs: Date.now() - started,
           fallbackOccurred: index > 0,
@@ -231,8 +259,9 @@ export class AiProviderService {
   async embedString(
     text: string,
     inputType: EmbeddingInputType = 'search_query',
+    options?: { overrideProvider?: string; overrideModel?: string },
   ): Promise<AiEmbeddingResult> {
-    const batch = await this.embedMany([text], inputType);
+    const batch = await this.embedMany([text], inputType, options);
     return {
       embedding: batch.embeddings[0],
       model: batch.model,
@@ -259,40 +288,18 @@ export class AiProviderService {
       throw new Error(`No ${kind} providers are configured (${orderVar})`);
     }
 
-    let lastError: unknown;
-    for (let i = 0; i < providers.length; i++) {
-      const provider = providers[i];
-      try {
-        const result = await attempt(provider, i);
-        this.logger.log(
-          `[${kind}] Served by provider="${result.provider}" fallbackOccurred=${result.fallbackOccurred} latencyMs=${result.latencyMs}`,
-        );
-        return result;
-      } catch (error) {
-        lastError = error;
-        const transient = isTransientFailure(error);
-        const isLast = i === providers.length - 1;
-
-        if (!transient) {
-          this.logger.error(
-            `[${kind}] Provider "${provider.name}" failed with non-transient error; not falling back: ${(error as Error).message}`,
-          );
-          throw error;
-        }
-
-        if (isLast) {
-          this.logger.error(
-            `[${kind}] Provider "${provider.name}" failed after exhausting all providers: ${(error as Error).message}`,
-          );
-          throw error;
-        }
-
-        this.logger.warn(
-          `[${kind}] Provider "${provider.name}" failed with transient error; falling back to "${providers[i + 1].name}": ${(error as Error).message}`,
-        );
-      }
+    const provider = providers[0];
+    try {
+      const result = await attempt(provider, 0);
+      this.logger.log(
+        `[${kind}] Served by provider="${result.provider}" fallbackOccurred=false latencyMs=${result.latencyMs}`,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `[${kind}] Provider "${provider.name}" failed: ${(error as Error).message}`,
+      );
+      throw error;
     }
-
-    throw lastError;
   }
 }

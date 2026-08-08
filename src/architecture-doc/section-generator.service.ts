@@ -28,6 +28,7 @@ export class SectionGeneratorService {
     plan: SectionPlan,
     context?: HybridRetrievalContext,
     codeRootPath?: string | null,
+    options?: { overrideModel?: string },
   ): Promise<DraftSection> {
     const retrievalContext =
       context ||
@@ -42,7 +43,10 @@ export class SectionGeneratorService {
 
     const prompt = buildSectionGenerationPrompt(plan, enrichedContext);
     const response = (
-      await this.aiProvider.generateContent(prompt, { tier: 'strong' })
+      await this.aiProvider.generateContent(prompt, {
+        tier: 'strong',
+        overrideModel: options?.overrideModel,
+      })
     ).text;
 
     const sourceFiles = this.extractCitations(response, enrichedContext);
