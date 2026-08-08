@@ -18,6 +18,7 @@ import { ProgressModule } from './progress/progress.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { AgentRagModule } from './agent-rag/agent-rag.module';
+import { SubscriptionModule } from './subscription/subscription.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -55,6 +56,7 @@ import { AppService } from './app.service';
     IntegrationsModule,
     OrganizationsModule,
     AgentRagModule,
+    SubscriptionModule,
   ],
   controllers: [AppController],
   providers: [

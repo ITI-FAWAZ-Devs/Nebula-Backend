@@ -50,6 +50,7 @@ export class SectionVerifierService {
     context: HybridRetrievalContext,
     repositoryId: string,
     codeRootPath?: string | null,
+    options?: { overrideModel?: string },
   ): Promise<DraftSection> {
     const enrichedContext = await this.codeContextLoader.enrich(
       context,
@@ -57,13 +58,17 @@ export class SectionVerifierService {
     );
     const prompt = buildSectionVerificationPrompt(section, enrichedContext);
     const response = (
-      await this.aiProvider.generateContent(prompt, { tier: 'strong' })
+      await this.aiProvider.generateContent(prompt, {
+        tier: 'strong',
+        overrideModel: options?.overrideModel,
+      })
     ).text;
 
     const verification = await this.parseVerification(
       response,
       section,
       'Verification',
+      options,
     );
 
     if (verification.verdict === 'verified' && verification.rewrittenBody) {
@@ -92,6 +97,7 @@ export class SectionVerifierService {
         const followUpResponse = (
           await this.aiProvider.generateContent(followUpPrompt, {
             tier: 'strong',
+            overrideModel: options?.overrideModel,
           })
         ).text;
 
@@ -99,6 +105,7 @@ export class SectionVerifierService {
           followUpResponse,
           section,
           'Follow-up verification',
+          options,
         );
 
         return {
@@ -132,6 +139,7 @@ export class SectionVerifierService {
     response: string,
     section: DraftSection,
     stage: string,
+    options?: { overrideModel?: string },
   ): Promise<VerificationResponse> {
     try {
       return await extractJsonFromLlmText<VerificationResponse>(
@@ -150,7 +158,7 @@ export class SectionVerifierService {
               'an object with keys "verdict" ("verified" | "unverified" | "removed"), optional "rewrittenBody", and optional "notes"',
               response,
             ),
-            { tier: 'strong' },
+            { tier: 'strong', overrideModel: options?.overrideModel },
           )
         ).text;
 

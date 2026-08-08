@@ -44,7 +44,7 @@ export class ArchitectureDocProcessor extends WorkerHost {
 
       this.logger.log(`[${documentId}] Calling drafting orchestrator...`);
       const draft = await this.draftingOrchestrator.draft(
-        { repositoryId, userId },
+        { repositoryId, documentId, userId },
         async (status) => {
           this.logger.log(`[${documentId}] Progress: ${status}`);
           await this.updateStatusMonotonic(repositoryId, documentId, status);

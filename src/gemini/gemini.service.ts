@@ -40,7 +40,7 @@ export class GeminiService {
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('gemini.apiKey');
     const llmModelName =
-      this.configService.get<string>('gemini.llmModel') || 'gemini-2.5-flash';
+      this.configService.get<string>('gemini.llmModel') || 'gemini-3.6-flash';
     const embeddingModelName =
       this.configService.get<string>('gemini.embeddingModel') ||
       'text-embedding-004';

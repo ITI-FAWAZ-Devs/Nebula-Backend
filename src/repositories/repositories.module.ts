@@ -13,6 +13,7 @@ import { DiscoveryModule } from '../discovery/discovery.module';
 import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { ChromaModule } from '../chroma/chroma.module';
 import { ProgressModule } from '../progress/progress.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
 import { DocumentationPipeline } from './documentation.pipeline';
 import { DocumentationProcessor } from './documentation.processor';
 import { StaleJobRecoveryService } from './stale-job-recovery.service';
@@ -34,6 +35,7 @@ import { DOCUMENTATION_QUEUE } from './documentation.constants';
     AiProviderModule,
     ChromaModule,
     ProgressModule,
+    SubscriptionModule,
   ],
   controllers: [RepositoriesController],
   providers: [

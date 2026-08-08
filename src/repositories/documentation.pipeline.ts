@@ -16,6 +16,7 @@ import {
   embeddingSpaceMetadata,
 } from '../ai-provider/embedding-space.util';
 import { ChromaService } from '../chroma/chroma.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 
 @Injectable()
 export class DocumentationPipeline {
@@ -32,6 +33,7 @@ export class DocumentationPipeline {
     private readonly discoveryService: DiscoveryService,
     private readonly aiProviderService: AiProviderService,
     private readonly chromaService: ChromaService,
+    private readonly subscriptionService: SubscriptionService,
     configService: ConfigService,
   ) {
     this.describeConcurrency =
@@ -57,6 +59,13 @@ export class DocumentationPipeline {
         stage: 'starting',
         startedAt: new Date(),
       });
+
+      // Check subscription quota & resolve tier models
+      const tierConfig = await this.subscriptionService.checkAndIncrementQuota(
+        userId,
+        'DOCUMENTATION_INDEXING',
+        repositoryId,
+      );
 
       const repository = await this.prisma.repository.findUniqueOrThrow({
         where: { id: repositoryId },
@@ -152,7 +161,10 @@ export class DocumentationPipeline {
           const fullPath = path.join(localPath, file);
           const content = await fs.readFile(fullPath, 'utf-8');
           const description = (
-            await this.aiProviderService.describeFile(file, content)
+            await this.aiProviderService.describeFile(file, content, {
+              overrideProvider: tierConfig.llmProvider,
+              overrideModel: tierConfig.llmModel,
+            })
           ).text;
           descriptions[index] = { file, description };
         } catch (err) {
@@ -202,6 +214,10 @@ export class DocumentationPipeline {
     const embedResult = await this.aiProviderService.embedMany(
       textToEmbed,
       'search_document',
+      {
+        overrideProvider: tierConfig.embeddingProvider,
+        overrideModel: tierConfig.embeddingModel,
+      },
     );
 
     const embeddingMeta = embeddingSpaceMetadata(embedResult);
@@ -375,26 +391,40 @@ export class DocumentationPipeline {
           '.jpeg',
           '.gif',
           '.ico',
+          '.svg',
+          '.webp',
+          '.bmp',
+          '.tiff',
           '.pdf',
           '.zip',
           '.tar',
           '.gz',
+          '.7z',
+          '.rar',
           '.mp3',
+          '.wav',
           '.mp4',
           '.avi',
           '.mov',
-          '.webp',
+          '.mkv',
           '.woff',
           '.woff2',
           '.ttf',
           '.eot',
+          '.otf',
           '.db',
           '.sqlite',
+          '.sqlite3',
           '.exe',
           '.dll',
           '.so',
+          '.dylib',
           '.dmg',
           '.jar',
+          '.class',
+          '.pyc',
+          '.o',
+          '.obj',
         ]);
 
         if (binaryExtensions.has(ext)) {

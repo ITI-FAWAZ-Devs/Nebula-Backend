@@ -118,7 +118,11 @@ export class BedrockGatewayLlmProvider implements LlmProvider {
     options?: LlmProviderOptions,
   ): Promise<LlmProviderResult> {
     const tier = options?.tier ?? 'standard';
-    const models = tier === 'strong' ? [this.strongModel] : this.models;
+    const models = options?.overrideModel
+      ? [options.overrideModel]
+      : tier === 'strong'
+      ? [this.strongModel]
+      : this.models;
 
     if (!this.apiKey || !this.baseUrl) {
       throw new Error(
@@ -132,29 +136,19 @@ export class BedrockGatewayLlmProvider implements LlmProvider {
       'Content-Type': 'application/json',
     };
 
-    let lastError: unknown;
-    for (const modelId of models) {
-      try {
-        return await this.chatWithRetries(prompt, modelId, endpoint, headers);
-      } catch (error) {
-        lastError = error;
-        const httpStatus =
-          typeof (error as { status?: unknown })?.status === 'number'
-            ? ` (HTTP ${(error as { status: number }).status})`
-            : '';
-        if (modelId !== models[models.length - 1]) {
-          this.logger.warn(
-            `Bedrock chat model "${modelId}" failed${httpStatus}; trying next model: ${(error as Error).message}`,
-          );
-        } else {
-          this.logger.warn(
-            `Bedrock chat failed on all models [${models.join(', ')}]${httpStatus}: ${(error as Error).message}`,
-          );
-        }
-      }
+    const modelId = models[0];
+    try {
+      return await this.chatWithRetries(prompt, modelId, endpoint, headers);
+    } catch (error) {
+      const httpStatus =
+        typeof (error as { status?: unknown })?.status === 'number'
+          ? ` (HTTP ${(error as { status: number }).status})`
+          : '';
+      this.logger.error(
+        `Bedrock chat failed on model "${modelId}"${httpStatus}: ${(error as Error).message}`,
+      );
+      throw error;
     }
-
-    throw lastError;
   }
 
   private async chatWithRetries(

@@ -24,6 +24,7 @@ import {
   ArchitectureDocRegenerateResponse,
 } from './dto/architecture-doc.dto';
 import { GithubClientService } from '../repositories/github-client.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 
 const ACTIVE_STATUSES: DocStatus[] = [
   DocStatus.PENDING,
@@ -41,6 +42,7 @@ export class ArchitectureDocService {
     private readonly architectureDraftQueue: Queue,
     private readonly progress: ProgressEventsService,
     private readonly githubClientService: GithubClientService,
+    private readonly subscriptionService: SubscriptionService,
   ) {}
 
   async start(
@@ -243,9 +245,17 @@ export class ArchitectureDocService {
     },
     commitSha: string | null,
     userId: string,
-    model: string,
+    fallbackModel: string,
   ): Promise<ArchitectureDocTriggerResponse> {
     const { id: repositoryId } = repository;
+
+    // Check subscription quota & increment usage
+    const tierConfig = await this.subscriptionService.checkAndIncrementQuota(
+      userId,
+      'ARCH_DOC_DRAFT',
+      repositoryId,
+    );
+    const model = tierConfig.llmModel || fallbackModel;
 
     let created = false;
     const document = await this.prisma.$transaction(async (tx) => {

@@ -166,64 +166,22 @@ describe('BedrockGatewayEmbeddingProvider', () => {
     expect(caught?.message).toContain('status 502');
   });
 
-  it('should try the candidates in order and pin the first that works', async () => {
+  it('should use candidate 0 and throw immediately on failure', async () => {
     mockConfigService.get.mockImplementation((key: string) => {
       const values: Record<string, string | number | string[]> = {
         'aiProvider.sbgApiKey': apiKey,
         'aiProvider.bedrockGatewayBaseUrl': baseUrl,
-        'aiProvider.bedrockEmbeddingModels': ['model-a', 'model-b', 'model-c'],
+        'aiProvider.bedrockEmbeddingModels': ['model-a', 'model-b'],
         'aiProvider.bedrockEmbeddingDimensions': 1024,
       };
       return values[key];
     });
     const fetchMock = createFetchMock();
-    fetchMock
-      .mockResolvedValueOnce(errorResponse(502))
-      .mockResolvedValueOnce(errorResponse(403))
-      .mockResolvedValueOnce(embedResponse([[0.1, 0.2]], 'embeddings'))
-      .mockResolvedValueOnce(embedResponse([[0.3, 0.4]], 'embeddings'));
+    fetchMock.mockResolvedValueOnce(errorResponse(502));
     global.fetch = fetchMock;
     const provider = buildProvider();
 
-    const result = await provider.embedMany(['hello'], 'search_query');
-
-    expect(result).toEqual([[0.3, 0.4]]);
-    expect(provider.model).toBe('model-c');
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    const [probeA] = fetchMock.mock.calls[0];
-    const [probeB] = fetchMock.mock.calls[1];
-    const [, probeCInit] = fetchMock.mock.calls[2];
-    const [, embedInit] = fetchMock.mock.calls[3];
-    expect(probeA).toBe('http://gateway.test/api/v1/student/embed');
-    expect(probeB).toBe('http://gateway.test/api/v1/student/embed');
-    const probeCBody = JSON.parse(probeCInit.body as string) as {
-      model_id: string;
-    };
-    expect(probeCBody.model_id).toBe('model-c');
-    expect(JSON.parse(embedInit.body as string)).toEqual({
-      model_id: 'model-c',
-      texts: ['hello'],
-      input_type: 'search_query',
-    });
-  });
-
-  it('should throw a transient aggregate error when every candidate fails', async () => {
-    const fetchMock = createFetchMock();
-    fetchMock.mockResolvedValue(errorResponse(503));
-    global.fetch = fetchMock;
-    const provider = buildProvider();
-
-    let caught: (Error & { name?: string }) | undefined;
-    try {
-      await provider.embedMany(['text'], 'search_document');
-      throw new Error('expected embedMany to reject');
-    } catch (e) {
-      caught = e as Error & { name?: string };
-    }
-
-    expect(caught).toBeInstanceOf(Error);
-    expect(caught?.name).toBe('ServiceUnavailableException');
-    expect(caught?.message).toContain('No Bedrock embedding model resolved');
-    expect(caught?.message).toContain('us.cohere.embed-v4:0');
+    await expect(provider.embedMany(['hello'], 'search_query')).rejects.toThrow('status 502');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

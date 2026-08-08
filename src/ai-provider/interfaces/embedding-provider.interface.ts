@@ -6,13 +6,22 @@
  */
 export type EmbeddingInputType = 'search_document' | 'search_query';
 
+export interface EmbeddingProviderOptions {
+  overrideModel?: string;
+}
+
 export interface EmbeddingProvider {
   readonly name: string;
   readonly model: string;
   readonly dimensions: number;
-  embedString(text: string, inputType?: EmbeddingInputType): Promise<number[]>;
+  embedString(
+    text: string,
+    inputType?: EmbeddingInputType,
+    options?: EmbeddingProviderOptions,
+  ): Promise<number[]>;
   embedMany(
     texts: string[],
     inputType?: EmbeddingInputType,
+    options?: EmbeddingProviderOptions,
   ): Promise<number[][]>;
 }

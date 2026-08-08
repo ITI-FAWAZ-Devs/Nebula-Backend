@@ -37,4 +37,5 @@ export interface ArchitectureDraft {
 export interface DraftRequest {
   repositoryId: string;
   userId: string;
+  documentId?: string;
 }
