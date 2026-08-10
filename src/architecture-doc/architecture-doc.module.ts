@@ -8,6 +8,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ProgressModule } from '../progress/progress.module';
 import { RepositoriesModule } from '../repositories/repositories.module';
 import { GitModule } from '../git/git.module';
+import { MailModule } from '../mail/mail.module';
 import { HybridRetrieverService } from './hybrid-retriever.service';
 import { CodeContextLoaderService } from './code-context-loader.service';
 import { StructurePlannerService } from './structure-planner.service';
@@ -37,6 +38,7 @@ import { SubscriptionModule } from '../subscription/subscription.module';
     ProgressModule,
     RepositoriesModule,
     GitModule,
+    MailModule,
     SubscriptionModule,
   ],
   controllers: [ArchitectureDocController],

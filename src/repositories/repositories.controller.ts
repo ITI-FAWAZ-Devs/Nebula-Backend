@@ -9,7 +9,6 @@ import {
   ParseUUIDPipe,
   NotFoundException,
   ForbiddenException,
-  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -235,20 +234,23 @@ export class RepositoriesController {
       throw new ForbiddenException('You do not have access to this repository');
     }
 
-    // Prevent concurrent documentation jobs
-    const activeJob = await this.prisma.documentationJob.findFirst({
-      where: {
-        repositoryId: id,
-        status: {
-          in: [DocumentationJobStatus.PENDING, DocumentationJobStatus.RUNNING],
-        },
-      },
+    // Return the most recent non-failed job — active or completed.
+    // A new job is only created when there are no prior jobs or the last one failed.
+    const latestDocJob = await this.prisma.documentationJob.findFirst({
+      where: { repositoryId: id },
+      orderBy: { createdAt: 'desc' },
     });
 
-    if (activeJob) {
-      throw new ConflictException(
-        'A documentation job is already in progress for this repository',
-      );
+    if (latestDocJob && latestDocJob.status !== DocumentationJobStatus.FAILED) {
+      this.progress.publishDocumentation(id, latestDocJob);
+      return {
+        success: true,
+        message:
+          latestDocJob.status === DocumentationJobStatus.COMPLETED
+            ? 'Documentation already completed'
+            : 'Documentation job already in progress',
+        data: latestDocJob,
+      };
     }
 
     const job = await this.prisma.documentationJob.create({

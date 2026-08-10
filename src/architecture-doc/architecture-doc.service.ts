@@ -57,10 +57,22 @@ export class ArchitectureDocService {
     const commitSha =
       dto.commitSha ?? repository.lastIndexedCommit ?? undefined;
 
+    // Return any active (in-progress) doc first
     const activeDoc = await this.findActiveDocument(repositoryId);
     if (activeDoc) {
       this.publishArchDoc(repositoryId, activeDoc);
       return this.toTriggerResponse(activeDoc);
+    }
+
+    // Return the most recent completed doc without starting a new one.
+    // Use regenerate() explicitly to force a new version.
+    const completedDoc = await this.prisma.generatedDoc.findFirst({
+      where: { repositoryId, status: DocStatus.COMPLETED },
+      orderBy: { version: 'desc' },
+    });
+    if (completedDoc) {
+      this.publishArchDoc(repositoryId, completedDoc);
+      return this.toTriggerResponse(completedDoc);
     }
 
     return this.createAndEnqueueVersion(
@@ -304,7 +316,8 @@ export class ArchitectureDocService {
     try {
       await this.architectureDraftQueue.add('draft', payload, {
         jobId: document.id,
-        attempts: 1,
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 5000 },
         removeOnComplete: 100,
         removeOnFail: 50,
       });
