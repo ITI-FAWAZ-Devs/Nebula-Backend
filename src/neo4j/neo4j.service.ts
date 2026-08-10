@@ -11,6 +11,8 @@ import {
   GraphNode,
   GraphRelationship,
 } from '../graph/interfaces/knowledge-graph.interface';
+import { EntityType } from '../graph/interfaces/entity.interface';
+import { RelationshipType } from '../graph/interfaces/relationship.interface';
 
 export interface NeighborhoodNode {
   id: string;
@@ -49,6 +51,28 @@ export interface GraphToolNode {
 const GRAPH_TOOL_MAX_HOPS = 2;
 const GRAPH_TOOL_MAX_NODES_PER_HOP = 25;
 
+/** Allowlisted node labels sourced from EntityType */
+const VALID_LABELS = new Set<string>([
+  'Repository',
+  'Directory',
+  'File',
+  'Class',
+  'Interface',
+  'Method',
+  'Function',
+] satisfies EntityType[]);
+
+/** Allowlisted relationship types sourced from RelationshipType */
+const VALID_REL_TYPES = new Set<string>([
+  'CONTAINS',
+  'IMPORTS',
+  'CALLS',
+  'EXTENDS',
+  'IMPLEMENTS',
+  'DEPENDS_ON',
+  'HAS_METHOD',
+] satisfies RelationshipType[]);
+
 function toGraphToolNode(raw: Record<string, unknown>): GraphToolNode {
   return {
     id: raw.id as string,
@@ -86,6 +110,7 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.driver.verifyConnectivity();
       this.logger.log('Connected to Neo4j');
+      await this.ensureSchema();
     } catch (error) {
       this.logger.error(
         `Neo4j connectivity check failed: ${(error as Error).message}`,
@@ -100,12 +125,83 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Creates indexes/constraints idempotently.
+   * Uses `IF NOT EXISTS` so repeated calls are safe.
+   */
+  private async ensureSchema(): Promise<void> {
+    const session = this.getSession();
+    try {
+      // Composite uniqueness: (id, repositoryId) per label ensures cross-repo
+      // MERGE safety — a node from repo A can never collide with repo B.
+      for (const label of VALID_LABELS) {
+        if (label === 'Repository') continue; // Repository nodes are global
+        await session
+          .run(
+            `CREATE CONSTRAINT IF NOT EXISTS
+             FOR (n:${label}) REQUIRE (n.id, n.repositoryId) IS NODE KEY`,
+          )
+          .catch((err) => {
+            // NODE KEY requires Enterprise; fall back to a regular index on neo4j Community
+            if ((err as Error).message?.includes('supported')) {
+              return session.run(
+                `CREATE INDEX IF NOT EXISTS FOR (n:${label}) ON (n.id, n.repositoryId)`,
+              );
+            }
+            throw err;
+          });
+
+        // Separate index on repositoryId alone for fast wipe-and-replace
+        await session
+          .run(
+            `CREATE INDEX IF NOT EXISTS FOR (n:${label}) ON (n.repositoryId)`,
+          )
+          .catch(() => undefined);
+      }
+
+      // Repository label: index on id
+      await session
+        .run(`CREATE INDEX IF NOT EXISTS FOR (n:Repository) ON (n.id)`)
+        .catch(() => undefined);
+
+      this.logger.log('Neo4j schema ensured');
+    } catch (error) {
+      this.logger.warn(
+        `Neo4j schema ensure encountered an issue: ${(error as Error).message}`,
+      );
+    } finally {
+      await session.close();
+    }
+  }
+
   private getSession(): Session {
     if (!this.driver) {
       throw new Error('Neo4j driver is not initialized');
     }
     return this.driver.session({ database: this.database });
   }
+
+  // ── Label / type validation ──────────────────────────────────────────────────
+
+  private validateLabel(label: string): string {
+    if (!VALID_LABELS.has(label)) {
+      this.logger.warn(
+        `Unknown node label "${label}" — falling back to "Function"`,
+      );
+      return 'Function';
+    }
+    return label;
+  }
+
+  private validateRelType(type: string): string | null {
+    if (!VALID_REL_TYPES.has(type)) {
+      this.logger.warn(`Unknown relationship type "${type}" — skipping`);
+      return null;
+    }
+    return type;
+  }
+
+  // ── getFileNeighborhood (fixed Cypher) ────────────────────────────────────
 
   async getFileNeighborhood(
     repositoryId: string,
@@ -114,38 +210,21 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
   ): Promise<FileNeighborhoodResult> {
     const session = this.getSession();
     try {
+      // Corrected: use `WHERE ... IN keys(start)` with a proper `any()` predicate
       const result = await session.run(
         `
         MATCH (start)
         WHERE start.repositoryId = $repositoryId
           AND any(key IN ['path', 'sourceFile', 'name']
-              KEYS start[key] AND start[key] IN $seedPaths)
-        OPTIONAL MATCH (start)-[r*1..$maxHops]-(neighbor)
+              WHERE key IN keys(start) AND start[key] IN $seedPaths)
+        OPTIONAL MATCH path = (start)-[r*1..$maxHops]-(neighbor)
         WHERE neighbor.repositoryId = $repositoryId
-        UNWIND (CASE WHEN r IS NULL THEN [NULL] ELSE r END) AS relChain
-        WITH start, collect(DISTINCT neighbor) AS allNodes,
-             collect(DISTINCT relChain) AS allRelChains
-        UNWIND allNodes AS node
-        WITH DISTINCT node,
-             [rel IN allRelChains WHERE rel IS NOT NULL | rel] AS chains
-        UNWIND (CASE WHEN chains = [] THEN [NULL] ELSE chains END) AS chain
-        UNWIND (CASE WHEN chain IS NULL THEN [NULL] ELSE chain END) AS rel
-        WITH node, rel,
-             CASE
-               WHEN rel IS NOT NULL
-               THEN reduce(hop = 0, r IN CASE WHEN chain IS NULL THEN [] ELSE chain END | hop + 1)
-               ELSE NULL
-             END AS distance
-        WITH node,
-             collect(DISTINCT {
-               rel: rel,
-               distance: coalesce(
-                 CASE WHEN rel IS NOT NULL THEN
-                   reduce(h = 0, r IN CASE WHEN chain IS NULL THEN [] ELSE chain END | h + 1)
-                 ELSE NULL END,
-                 0
-               )
-             }) AS rels
+        WITH start,
+             collect(DISTINCT neighbor) AS neighbors,
+             collect(DISTINCT r) AS relPaths
+        UNWIND (CASE WHEN size(neighbors) = 0 THEN [null] ELSE neighbors END) AS node
+        WITH DISTINCT node, relPaths
+        WHERE node IS NOT NULL
         RETURN
           collect(DISTINCT {
             id: node.id,
@@ -153,21 +232,24 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
             labels: labels(node),
             properties: properties(node)
           }) AS nodes,
-          [r IN rels WHERE r.rel IS NOT NULL | {
-            id: r.rel.id,
-            fromFilePath: coalesce(
-              startNode(r.rel).path,
-              startNode(r.rel).sourceFile,
-              startNode(r.rel).name
-            ),
-            toFilePath: coalesce(
-              endNode(r.rel).path,
-              endNode(r.rel).sourceFile,
-              endNode(r.rel).name
-            ),
-            type: type(r.rel),
-            hopDistance: r.distance
-          }] AS edges
+          [chain IN relPaths
+           WHERE chain IS NOT NULL AND size(chain) > 0
+           | {
+               id: chain[-1].id,
+               fromFilePath: coalesce(
+                 startNode(chain[-1]).path,
+                 startNode(chain[-1]).sourceFile,
+                 startNode(chain[-1]).name
+               ),
+               toFilePath: coalesce(
+                 endNode(chain[-1]).path,
+                 endNode(chain[-1]).sourceFile,
+                 endNode(chain[-1]).name
+               ),
+               type: type(chain[-1]),
+               hopDistance: size(chain)
+             }
+          ] AS edges
         `,
         { repositoryId, seedPaths, maxHops: neo4j.int(maxHops) },
       );
@@ -199,12 +281,19 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
           const fromFp = e.fromFilePath as string;
           const toFp = e.toFilePath as string;
           if (fromFp && toFp) {
+            const hopRaw = e.hopDistance;
+            const hopDistance =
+              hopRaw instanceof Integer
+                ? hopRaw.toNumber()
+                : typeof hopRaw === 'number'
+                  ? hopRaw
+                  : 1;
             edges.push({
               id: e.id as string,
               fromFilePath: fromFp,
               toFilePath: toFp,
               type: e.type as string,
-              hopDistance: (e.hopDistance as Integer).toNumber(),
+              hopDistance,
             });
           }
         }
@@ -219,29 +308,38 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
   async saveNode(node: GraphNode): Promise<void> {
     const session = this.getSession();
     try {
-      const label = node.labels[0] || 'Entity';
-      await session.run(`MERGE (n:${label} {id: $id}) SET n += $properties`, {
-        id: node.id,
-        properties: node.properties,
-      });
+      const label = this.validateLabel(node.labels[0] || 'Function');
+      await session.run(
+        `MERGE (n:${label} {id: $id, repositoryId: $repositoryId}) SET n += $properties`,
+        {
+          id: node.id,
+          repositoryId: node.properties.repositoryId ?? '',
+          properties: node.properties,
+        },
+      );
     } finally {
       await session.close();
     }
   }
 
   async saveRelationship(rel: GraphRelationship): Promise<void> {
+    const validType = this.validateRelType(rel.type);
+    if (!validType) return;
+
     const session = this.getSession();
     try {
       await session.run(
         `
-        MATCH (a {id: $startId}), (b {id: $endId})
-        MERGE (a)-[r:${rel.type} {id: $id}]->(b)
+        MATCH (a {id: $startId, repositoryId: $repositoryId}),
+              (b {id: $endId, repositoryId: $repositoryId})
+        MERGE (a)-[r:${validType} {id: $id}]->(b)
         SET r += $properties
         `,
         {
           startId: rel.startNodeId,
           endId: rel.endNodeId,
           id: rel.id,
+          repositoryId: rel.properties.repositoryId ?? '',
           properties: rel.properties,
         },
       );
@@ -260,10 +358,10 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
         repositoryId: graph.repositoryId,
       });
 
-      // Batch insert nodes grouped by label
+      // Batch insert nodes grouped by label (validated)
       const byLabel = new Map<string, GraphNode[]>();
       for (const node of graph.nodes) {
-        const label = node.labels[0] || 'Entity';
+        const label = this.validateLabel(node.labels[0] || 'Function');
         const list = byLabel.get(label) || [];
         list.push(node);
         byLabel.set(label, list);
@@ -273,10 +371,11 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
         await tx.run(
           `
           UNWIND $nodes AS node
-          MERGE (n:${label} {id: node.id})
+          MERGE (n:${label} {id: node.id, repositoryId: $repositoryId})
           SET n += node.properties
           `,
           {
+            repositoryId: graph.repositoryId,
             nodes: nodes.map((n) => ({
               id: n.id,
               properties: n.properties,
@@ -285,23 +384,27 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      // Batch insert relationships grouped by type
+      // Batch insert relationships grouped by type (validated)
       const byType = new Map<string, GraphRelationship[]>();
       for (const rel of graph.relationships) {
-        const list = byType.get(rel.type) || [];
+        const validType = this.validateRelType(rel.type);
+        if (!validType) continue;
+        const list = byType.get(validType) || [];
         list.push(rel);
-        byType.set(rel.type, list);
+        byType.set(validType, list);
       }
 
       for (const [type, rels] of byType) {
         await tx.run(
           `
           UNWIND $rels AS rel
-          MATCH (a {id: rel.startNodeId}), (b {id: rel.endNodeId})
+          MATCH (a {id: rel.startNodeId, repositoryId: $repositoryId}),
+                (b {id: rel.endNodeId, repositoryId: $repositoryId})
           MERGE (a)-[r:${type} {id: rel.id}]->(b)
           SET r += rel.properties
           `,
           {
+            repositoryId: graph.repositoryId,
             rels: rels.map((r) => ({
               id: r.id,
               startNodeId: r.startNodeId,

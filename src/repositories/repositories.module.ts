@@ -14,17 +14,20 @@ import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { ChromaModule } from '../chroma/chroma.module';
 import { ProgressModule } from '../progress/progress.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
+import { MailModule } from '../mail/mail.module';
 import { DocumentationPipeline } from './documentation.pipeline';
 import { DocumentationProcessor } from './documentation.processor';
 import { StaleJobRecoveryService } from './stale-job-recovery.service';
 import { AskService } from './ask.service';
 import { DOCUMENTATION_QUEUE } from './documentation.constants';
+import { ARCHITECTURE_DRAFT_QUEUE } from '../architecture-doc/architecture-doc.constants';
 
 @Module({
   imports: [
-    BullModule.registerQueue({
-      name: DOCUMENTATION_QUEUE,
-    }),
+    BullModule.registerQueue(
+      { name: DOCUMENTATION_QUEUE },
+      { name: ARCHITECTURE_DRAFT_QUEUE },
+    ),
     UsersModule,
     AnalysisModule,
     IntegrationsModule,
@@ -36,6 +39,7 @@ import { DOCUMENTATION_QUEUE } from './documentation.constants';
     ChromaModule,
     ProgressModule,
     SubscriptionModule,
+    MailModule,
   ],
   controllers: [RepositoriesController],
   providers: [

@@ -38,4 +38,8 @@ export interface DraftRequest {
   repositoryId: string;
   userId: string;
   documentId?: string;
+  /** Previously generated sections to skip (resume support) */
+  resumedSections?: DraftSection[];
+  /** Previously computed section plan (resume support) */
+  resumedPlan?: SectionPlan[];
 }

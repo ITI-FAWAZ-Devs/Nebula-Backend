@@ -223,6 +223,8 @@ model GeneratedDoc {
   verificationScore Float?
   errorMessage      String?
   generatedAt       DateTime?
+  checkpoint        Json?
+  resumeCount       Int       @default(0)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -268,6 +270,8 @@ model AnalysisJob {
   stage        String?
   error        String?
   queueJobId   String?
+  checkpoint   Json?
+  resumeCount  Int               @default(0)
   startedAt    DateTime?
   finishedAt   DateTime?
   createdAt    DateTime          @default(now())
@@ -294,6 +298,8 @@ model DocumentationJob {
   progress     Int?
   error        String?
   queueJobId   String?
+  checkpoint   Json?
+  resumeCount  Int                    @default(0)
   startedAt    DateTime?
   finishedAt   DateTime?
   createdAt    DateTime               @default(now())

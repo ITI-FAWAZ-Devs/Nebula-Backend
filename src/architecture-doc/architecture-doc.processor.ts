@@ -1,7 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
-import { DocStatus } from '@prisma/client';
+import { DocStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProgressEventsService } from '../progress/progress-events.service';
 import {
@@ -10,6 +10,9 @@ import {
 } from './architecture-doc.constants';
 import { DraftingOrchestratorService } from './drafting-orchestrator.service';
 import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.service';
+import { MailService } from '../mail/mail.service';
+import { DraftSection, SectionPlan } from './dto/architecture-draft.dto';
+import { fromPrismaJson, PipelineCheckpoint } from '../common/pipeline-checkpoint';
 
 const STATUS_ORDER: DocStatus[] = [
   DocStatus.PENDING,
@@ -20,6 +23,11 @@ const STATUS_ORDER: DocStatus[] = [
   DocStatus.FAILED,
 ];
 
+interface DraftCheckpointArtifacts {
+  sectionPlan?: SectionPlan[];
+  sections?: DraftSection[];
+}
+
 @Processor(ARCHITECTURE_DRAFT_QUEUE)
 export class ArchitectureDocProcessor extends WorkerHost {
   private readonly logger = new Logger(ArchitectureDocProcessor.name);
@@ -29,6 +37,7 @@ export class ArchitectureDocProcessor extends WorkerHost {
     private readonly progress: ProgressEventsService,
     private readonly draftingOrchestrator: DraftingOrchestratorService,
     private readonly embedder: ArchitectureDocEmbedderService,
+    private readonly mailService: MailService,
   ) {
     super();
   }
@@ -40,14 +49,50 @@ export class ArchitectureDocProcessor extends WorkerHost {
     );
 
     try {
-      await this.updateStatus(repositoryId, documentId, DocStatus.RETRIEVING);
+      // Load checkpoint to resume if this is a retry
+      const docRow = await this.prisma.generatedDoc.findUnique({
+        where: { id: documentId },
+        select: { checkpoint: true, status: true },
+      });
+      const checkpoint = fromPrismaJson(docRow?.checkpoint);
+      const artifacts = checkpoint.artifacts as DraftCheckpointArtifacts;
+
+      const resumedSections = (artifacts.sections ?? []) as DraftSection[];
+      const resumedPlan = (artifacts.sectionPlan ?? []) as SectionPlan[];
+
+      if (resumedSections.length > 0) {
+        this.logger.log(
+          `[${documentId}] Resuming draft — ${resumedSections.length} sections already completed`,
+        );
+      }
+
+      await this.updateStatusMonotonic(repositoryId, documentId, DocStatus.RETRIEVING);
 
       this.logger.log(`[${documentId}] Calling drafting orchestrator...`);
       const draft = await this.draftingOrchestrator.draft(
-        { repositoryId, documentId, userId },
+        {
+          repositoryId,
+          documentId,
+          userId,
+          resumedSections: resumedSections.length > 0 ? resumedSections : undefined,
+          resumedPlan: resumedPlan.length > 0 ? resumedPlan : undefined,
+        },
         async (status) => {
           this.logger.log(`[${documentId}] Progress: ${status}`);
           await this.updateStatusMonotonic(repositoryId, documentId, status);
+        },
+        async (section: DraftSection, plan: SectionPlan[]) => {
+          // Persist checkpoint after each section completes
+          await this.saveCheckpoint(documentId, {
+            completedStages: checkpoint.completedStages,
+            artifacts: {
+              sectionPlan: plan,
+              sections: [
+                ...(artifacts.sections ?? []).filter((s: DraftSection) => s.key !== section.key),
+                section,
+              ],
+            },
+          });
         },
       );
 
@@ -75,6 +120,9 @@ export class ArchitectureDocProcessor extends WorkerHost {
       let docCommitSha: string | null = null;
 
       await this.prisma.$transaction(async (tx) => {
+        // Delete any sections from prior (partial) runs to avoid duplicates
+        await tx.docSection.deleteMany({ where: { docId: documentId } });
+
         if (persistedSections.length > 0) {
           await tx.docSection.createMany({
             data: persistedSections.map((section, index) => ({
@@ -113,6 +161,7 @@ export class ArchitectureDocProcessor extends WorkerHost {
             verificationScore,
             generatedAt: new Date(),
             errorMessage: null,
+            checkpoint: Prisma.JsonNull, // clear checkpoint on success
           },
         });
         docVersion = updatedDoc.version;
@@ -122,6 +171,8 @@ export class ArchitectureDocProcessor extends WorkerHost {
           `[${documentId}] Document marked COMPLETED. verificationScore=${verificationScore}`,
         );
       });
+
+      this.publishProgress(repositoryId, documentId, DocStatus.COMPLETED, null);
 
       // Embed document sections into ChromaDB
       if (persistedSections.length > 0) {
@@ -146,6 +197,14 @@ export class ArchitectureDocProcessor extends WorkerHost {
           );
         }
       }
+
+      // ── Completion email ───────────────────────────────────────────────────
+      await this.sendCompletionEmail(repositoryId, 'Architecture Documentation').catch(
+        (err) =>
+          this.logger.warn(
+            `[${documentId}] Could not send completion email: ${(err as Error).message}`,
+          ),
+      );
     } catch (error) {
       this.logger.error(
         `[${documentId}] Architecture draft job failed: ${(error as Error).message}`,
@@ -166,6 +225,36 @@ export class ArchitectureDocProcessor extends WorkerHost {
         this.boundErrorMessage(error),
       );
     }
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  private async saveCheckpoint(
+    documentId: string,
+    checkpoint: PipelineCheckpoint,
+  ): Promise<void> {
+    await this.prisma.generatedDoc.update({
+      where: { id: documentId },
+      data: { checkpoint: checkpoint as object },
+    });
+  }
+
+  private async sendCompletionEmail(
+    repositoryId: string,
+    pipeline: string,
+  ): Promise<void> {
+    const repository = await this.prisma.repository.findUnique({
+      where: { id: repositoryId },
+      include: { user: true },
+    });
+    if (!repository?.user?.email) return;
+
+    await this.mailService.sendJobCompletedEmail({
+      email: repository.user.email,
+      fullName: repository.user.fullName ?? undefined,
+      repositoryName: repository.name,
+      pipeline,
+    });
   }
 
   private async updateStatus(

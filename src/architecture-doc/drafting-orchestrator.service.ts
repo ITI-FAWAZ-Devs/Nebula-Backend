@@ -12,19 +12,18 @@ import {
   ArchitectureDraft,
   DraftSection,
   ArchitectureDiagram,
+  SectionPlan,
 } from './dto/architecture-draft.dto';
 import { buildDependencyGraphSectionContent } from './templates/dependency-graph-section.prompt';
 
 export const DEPENDENCY_GRAPH_SECTION_KEY = 'dependency-graph';
 
 export type DraftProgressReporter = (status: DocStatus) => void | Promise<void>;
+export type SectionCheckpointSaver = (
+  section: DraftSection,
+  plan: SectionPlan[],
+) => Promise<void>;
 
-/**
- * Phase 2 internal drafting pipeline component.
- * Top-level orchestrator for the architecture drafting pipeline as specified in
- * `specs/003-architecture-drafting/contracts/drafting-pipeline.md`.
- * Exposes no public HTTP route, BullMQ processor, or controller.
- */
 @Injectable()
 export class DraftingOrchestratorService {
   private readonly logger = new Logger(DraftingOrchestratorService.name);
@@ -42,6 +41,7 @@ export class DraftingOrchestratorService {
   async draft(
     request: DraftRequest,
     onProgress?: DraftProgressReporter,
+    onSectionCheckpoint?: SectionCheckpointSaver,
   ): Promise<ArchitectureDraft> {
     const { repositoryId, userId } = request;
 
@@ -91,12 +91,21 @@ export class DraftingOrchestratorService {
       `[${repositoryId}] Broad context: ${broadContext.files.length} files, ${broadContext.relationships.length} relationships, ${broadContext.moduleClusters.length} clusters, noEvidence=${broadContext.noEvidence}`,
     );
 
-    this.logger.log(`[${repositoryId}] Planning sections...`);
-    const sectionPlan = await this.structurePlanner.plan(
-      repositoryId,
-      codeRootPath,
-      { overrideModel: docModel },
-    );
+    // ── Section plan — reuse from checkpoint if available ──────────────────
+    let sectionPlan: SectionPlan[];
+    if (request.resumedPlan && request.resumedPlan.length > 0) {
+      this.logger.log(
+        `[${repositoryId}] Resuming with saved plan (${request.resumedPlan.length} sections)`,
+      );
+      sectionPlan = request.resumedPlan;
+    } else {
+      this.logger.log(`[${repositoryId}] Planning sections...`);
+      sectionPlan = await this.structurePlanner.plan(
+        repositoryId,
+        codeRootPath,
+        { overrideModel: docModel },
+      );
+    }
 
     this.logger.log(
       `[${repositoryId}] Section plan: ${sectionPlan.length} sections planned`,
@@ -122,7 +131,12 @@ export class DraftingOrchestratorService {
       };
     }
 
-    const sections: DraftSection[] = [];
+    // ── Build resume map from previously completed sections ───────────────
+    const resumedSectionsMap = new Map<string, DraftSection>(
+      (request.resumedSections ?? []).map((s) => [s.key, s]),
+    );
+
+    const sections: DraftSection[] = [...(request.resumedSections ?? [])];
     const allRelationships = [...broadContext.relationships];
     const allClusters = [...broadContext.moduleClusters];
     const allFiles = new Map<string, { filePath: string }>();
@@ -133,6 +147,15 @@ export class DraftingOrchestratorService {
     let verificationStarted = false;
     for (let i = 0; i < sectionPlan.length; i++) {
       const plan = sectionPlan[i];
+
+      // Skip sections already completed in a prior run
+      if (resumedSectionsMap.has(plan.key)) {
+        this.logger.log(
+          `[${repositoryId}] Skipping section "${plan.key}" — already completed`,
+        );
+        continue;
+      }
+
       this.logger.log(
         `[${repositoryId}] Generating section ${i + 1}/${sectionPlan.length}: ${plan.key}`,
       );
@@ -198,10 +221,21 @@ export class DraftingOrchestratorService {
           );
         }
 
-        sections.push({
+        const completedSection: DraftSection = {
           ...verified,
           diagramMermaid: sectionDiagram?.mermaidSource ?? null,
-        });
+        };
+        sections.push(completedSection);
+
+        // Persist checkpoint after each section so a crash doesn't lose it
+        if (onSectionCheckpoint) {
+          await onSectionCheckpoint(completedSection, sectionPlan).catch(
+            (err) =>
+              this.logger.warn(
+                `[${repositoryId}] Could not save section checkpoint for "${plan.key}": ${(err as Error).message}`,
+              ),
+          );
+        }
       } catch (error) {
         this.logger.error(
           `[${repositoryId}] Failed to process section ${plan.key}: ${(error as Error).message}`,

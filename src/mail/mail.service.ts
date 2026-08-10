@@ -129,4 +129,38 @@ export class MailService {
       );
     }
   }
+
+  async sendJobCompletedEmail(params: {
+    email: string;
+    fullName?: string;
+    repositoryName: string;
+    pipeline: string;
+  }): Promise<void> {
+    const { email, fullName, repositoryName, pipeline } = params;
+
+    const html = this.loadTemplate('job-complete', {
+      fullName: fullName || 'there',
+      repositoryName,
+      pipeline,
+      frontendUrl: this.frontendUrl || null,
+    });
+
+    try {
+      await this.transporter.sendMail({
+        from: this.fromAddress,
+        to: email,
+        subject: `${pipeline} completed for ${repositoryName} — Nebula`,
+        html,
+      });
+      this.logger.log(
+        `Job completion email sent to ${email} (${pipeline} / ${repositoryName})`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send job completion email to ${email}`,
+        error,
+      );
+      throw error;
+    }
+  }
 }

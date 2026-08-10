@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -32,20 +31,16 @@ export class AnalysisService {
       throw new ForbiddenException('You do not have access to this repository');
     }
 
-    // Prevent concurrent analysis of the same repo
-    const activeJob = await this.prisma.analysisJob.findFirst({
-      where: {
-        repositoryId,
-        status: {
-          in: [AnalysisJobStatus.QUEUED, AnalysisJobStatus.RUNNING],
-        },
-      },
+    // Return the most recent non-failed job — active or completed.
+    // A new job is only created when there are no prior jobs or the last one failed.
+    const latestJob = await this.prisma.analysisJob.findFirst({
+      where: { repositoryId },
+      orderBy: { createdAt: 'desc' },
     });
 
-    if (activeJob) {
-      throw new ConflictException(
-        'An analysis job is already in progress for this repository',
-      );
+    if (latestJob && latestJob.status !== AnalysisJobStatus.FAILED) {
+      this.progress.publishAnalysis(repositoryId, latestJob);
+      return latestJob;
     }
 
     const job = await this.prisma.analysisJob.create({
@@ -70,7 +65,7 @@ export class AnalysisService {
     };
 
     const queueJob = await this.analysisQueue.add('analyze', payload, {
-      attempts: 2,
+      attempts: 5,
       backoff: {
         type: 'exponential',
         delay: 5000,
