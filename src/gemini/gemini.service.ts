@@ -53,6 +53,7 @@ export class GeminiService {
     }
 
     this.genAI = new GoogleGenerativeAI(apiKey || '');
+    this.llmModelName = llmModelName;
     this.llmModelInstance = this.genAI.getGenerativeModel({
       model: llmModelName,
     });
@@ -266,7 +267,12 @@ export class GeminiService {
     if (start === -1 || end === -1 || end < start) {
       throw new Error('No JSON array found in relevance scoring response');
     }
-    return text.slice(start, end + 1);
+    const raw = text.slice(start, end + 1);
+    // Sanitize bad escape sequences that LLMs sometimes produce (e.g. \' or \c).
+    // Replace any backslash not followed by a valid JSON escape character with a
+    // double-backslash so JSON.parse does not throw "Bad escaped character".
+    const sanitized = raw.replace(/\\(?!["\\\//bfnrtu])/g, '\\\\');
+    return sanitized;
   }
 
   private clampScore(value: unknown): number {

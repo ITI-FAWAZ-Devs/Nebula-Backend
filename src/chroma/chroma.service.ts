@@ -77,6 +77,11 @@ export class ChromaService {
 
   /**
    * Upserts a batch of document chunks with pre-computed embeddings and metadata.
+   *
+   * Chroma Cloud enforces a 16 KB document-size limit per upsert request.
+   * To stay safely under that threshold, chunks are grouped into sub-batches
+   * whose combined UTF-8 byte size does not exceed MAX_BATCH_BYTES. Each
+   * sub-batch is then upserted sequentially.
    */
   async upsertChunks(
     collectionName: string,
@@ -89,27 +94,65 @@ export class ChromaService {
   ) {
     if (chunks.length === 0) return;
 
-    try {
-      const collection = await this.getOrCreateCollection(collectionName);
-      const ids = chunks.map((c) => c.id);
-      const documents = chunks.map((c) => c.document);
-      const metadatas = chunks.map((c) => c.metadata);
-      const embeddings = chunks.map((c) => c.embedding);
+    /** Conservative limit — 12 KB leaves headroom below the 16 KB quota */
+    const MAX_BATCH_BYTES = 12 * 1024;
 
-      this.logger.log(
-        `Upserting ${chunks.length} chunks to collection ${collectionName}`,
-      );
-      await collection.upsert({
-        ids,
-        documents,
-        metadatas,
-        embeddings,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to upsert chunks to collection ${collectionName}: ${(error as Error).message}`,
-      );
-      throw error;
+    // Split chunks into size-aware sub-batches
+    const batches: (typeof chunks)[] = [];
+    let currentBatch: typeof chunks = [];
+    let currentBatchSize = 0;
+
+    for (const chunk of chunks) {
+      const chunkSize = Buffer.byteLength(chunk.document, 'utf8');
+
+      // If a single chunk exceeds the limit on its own, warn and skip it
+      if (chunkSize > MAX_BATCH_BYTES) {
+        this.logger.warn(
+          `Chunk ${chunk.id} document size (${chunkSize} bytes) exceeds MAX_BATCH_BYTES ` +
+            `(${MAX_BATCH_BYTES} bytes). Skipping this chunk to avoid quota error.`,
+        );
+        continue;
+      }
+
+      if (currentBatchSize + chunkSize > MAX_BATCH_BYTES && currentBatch.length > 0) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentBatchSize = 0;
+      }
+
+      currentBatch.push(chunk);
+      currentBatchSize += chunkSize;
+    }
+
+    if (currentBatch.length > 0) {
+      batches.push(currentBatch);
+    }
+
+    if (batches.length === 0) return;
+
+    const collection = await this.getOrCreateCollection(collectionName);
+
+    this.logger.log(
+      `Upserting ${chunks.length} chunks to collection ${collectionName} ` +
+        `in ${batches.length} size-aware batch(es)`,
+    );
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      try {
+        await collection.upsert({
+          ids: batch.map((c) => c.id),
+          documents: batch.map((c) => c.document),
+          metadatas: batch.map((c) => c.metadata),
+          embeddings: batch.map((c) => c.embedding),
+        });
+      } catch (error) {
+        this.logger.error(
+          `Failed to upsert batch ${i + 1}/${batches.length} to collection ` +
+            `${collectionName}: ${(error as Error).message}`,
+        );
+        throw error;
+      }
     }
   }
 

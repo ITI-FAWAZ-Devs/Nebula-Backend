@@ -11,21 +11,21 @@ export interface TierConfig {
 export const DEFAULT_SUBSCRIPTION_TIERS: Record<string, TierConfig> = {
   FREE: {
     maxGenerationsPerMonth: 200,
-    llmModel: 'gemini-3.6-flash',
+    llmModel: 'gemini-3.1-flash-lite',
     llmProvider: 'gemini',
     embeddingProvider: 'gemini',
-    embeddingModel: 'text-embedding-004',
+    embeddingModel: 'gemini-embedding-2',
   },
   PRO: {
     maxGenerationsPerMonth: 200,
-    llmModel: 'gemini-3.6-flash',
+    llmModel: 'gemini-3.1-flash-lite',
     llmProvider: 'gemini',
     embeddingProvider: 'gemini',
-    embeddingModel: 'text-embedding-004',
+    embeddingModel: 'gemini-embedding-2',
   },
   ULTRA: {
     maxGenerationsPerMonth: 100,
-    llmModel: 'gemini-3.6-flash',
+    llmModel: 'gemini-3.1-flash-lite',
     llmProvider: 'gemini',
     embeddingProvider: 'gemini',
     embeddingModel: 'text-embedding-004',
