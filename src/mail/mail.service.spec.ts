@@ -51,6 +51,7 @@ describe('MailService.sendJobCompletedEmail', () => {
       email: 'user@example.com',
       fullName: 'Alice',
       repositoryName: 'my-repo',
+      repositoryId: 'repo-123',
       pipeline: 'Analysis',
     });
 
@@ -69,6 +70,7 @@ describe('MailService.sendJobCompletedEmail', () => {
         email: 'user@example.com',
         fullName: 'Alice',
         repositoryName: 'my-repo',
+        repositoryId: 'repo-123',
         pipeline: 'Documentation Indexing',
       }),
     ).rejects.toThrow('SMTP error');
@@ -78,6 +80,7 @@ describe('MailService.sendJobCompletedEmail', () => {
     await service.sendJobCompletedEmail({
       email: 'anon@example.com',
       repositoryName: 'repo',
+      repositoryId: 'repo-456',
       pipeline: 'Analysis',
     });
 

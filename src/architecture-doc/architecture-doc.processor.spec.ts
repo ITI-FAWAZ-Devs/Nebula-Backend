@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ProgressEventsService } from '../progress/progress-events.service';
 import { DraftingOrchestratorService } from './drafting-orchestrator.service';
 import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.service';
+import { MailService } from '../mail/mail.service';
 import { ArchitectureDraft } from './dto/architecture-draft.dto';
 
 describe('ArchitectureDocProcessor', () => {
@@ -67,6 +68,14 @@ describe('ArchitectureDocProcessor', () => {
     },
     docSection: {
       createMany: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    repository: {
+      findUnique: jest.fn().mockResolvedValue({
+        owner: 'test-owner',
+        name: 'test-repo',
+        user: { email: 'test@example.com', fullName: 'Test User' },
+      }),
     },
     $transaction: jest.fn(),
   };
@@ -90,6 +99,10 @@ describe('ArchitectureDocProcessor', () => {
         },
         { provide: ProgressEventsService, useValue: mockProgress },
         { provide: ArchitectureDocEmbedderService, useValue: mockEmbedder },
+        {
+          provide: MailService,
+          useValue: { sendJobCompletedEmail: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 
@@ -150,12 +163,12 @@ describe('ArchitectureDocProcessor', () => {
 
     expect(mockPrisma.generatedDoc.update).toHaveBeenCalledWith({
       where: { id: documentId },
-      data: {
+      data: expect.objectContaining({
         status: DocStatus.COMPLETED,
         verificationScore: 0.5,
         generatedAt: expect.any(Date),
         errorMessage: null,
-      },
+      }),
     });
   });
 

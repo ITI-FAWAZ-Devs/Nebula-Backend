@@ -11,7 +11,6 @@ import { DiscoveryModule } from '../discovery/discovery.module';
 import { GraphifyModule } from '../graphify/graphify.module';
 import { GraphModule } from '../graph/graph.module';
 import { Neo4jModule } from '../neo4j/neo4j.module';
-import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
@@ -25,7 +24,6 @@ import { MailModule } from '../mail/mail.module';
     GraphifyModule,
     GraphModule,
     Neo4jModule,
-    MailModule,
   ],
   providers: [AnalysisService, AnalysisPipeline, AnalysisProcessor],
   exports: [AnalysisService, BullModule],

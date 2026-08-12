@@ -13,7 +13,6 @@ import { GraphifyService } from '../graphify/graphify.service';
 import { GraphNormalizerService } from '../graph/graph-normalizer.service';
 import { GraphBuilderService } from '../graph/graph-builder.service';
 import { Neo4jService } from '../neo4j/neo4j.service';
-import { MailService } from '../mail/mail.service';
 import {
   fromPrismaJson,
   markStage,
@@ -40,7 +39,6 @@ export class AnalysisPipeline {
     private readonly normalizer: GraphNormalizerService,
     private readonly graphBuilder: GraphBuilderService,
     private readonly neo4j: Neo4jService,
-    private readonly mailService: MailService,
     configService: ConfigService,
   ) {
     this.workspaceRoot = getWorkspaceRoot(configService);
@@ -235,13 +233,6 @@ export class AnalysisPipeline {
       this.logger.log(
         `Analysis completed for repository ${repositoryId} (job ${analysisJobId})`,
       );
-
-      // ── Completion email ────────────────────────────────────────────────────
-      await this.sendCompletionEmail(repositoryId, 'Analysis').catch((err) =>
-        this.logger.warn(
-          `Could not send completion email for analysis job ${analysisJobId}: ${(err as Error).message}`,
-        ),
-      );
     } catch (error) {
       const message = (error as Error).message || 'Unknown analysis error';
       this.logger.error(
@@ -301,24 +292,6 @@ export class AnalysisPipeline {
     });
 
     return result;
-  }
-
-  private async sendCompletionEmail(
-    repositoryId: string,
-    pipeline: string,
-  ): Promise<void> {
-    const repository = await this.prisma.repository.findUnique({
-      where: { id: repositoryId },
-      include: { user: true },
-    });
-    if (!repository?.user?.email) return;
-
-    await this.mailService.sendJobCompletedEmail({
-      email: repository.user.email,
-      fullName: repository.user.fullName ?? undefined,
-      repositoryName: repository.name,
-      pipeline,
-    });
   }
 
   private async setStage(

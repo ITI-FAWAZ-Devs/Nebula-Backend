@@ -134,15 +134,20 @@ export class MailService {
     email: string;
     fullName?: string;
     repositoryName: string;
+    repositoryId: string;
     pipeline: string;
   }): Promise<void> {
-    const { email, fullName, repositoryName, pipeline } = params;
+    const { email, fullName, repositoryName, repositoryId, pipeline } = params;
+
+    const viewResultsUrl = this.frontendUrl
+      ? `${this.frontendUrl}/workspace?repoId=${repositoryId}&repo=${encodeURIComponent(repositoryName)}`
+      : null;
 
     const html = this.loadTemplate('job-complete', {
       fullName: fullName || 'there',
       repositoryName,
       pipeline,
-      frontendUrl: this.frontendUrl || null,
+      viewResultsUrl,
     });
 
     try {

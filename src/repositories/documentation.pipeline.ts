@@ -17,7 +17,6 @@ import {
 } from '../ai-provider/embedding-space.util';
 import { ChromaService } from '../chroma/chroma.service';
 import { SubscriptionService } from '../subscription/subscription.service';
-import { MailService } from '../mail/mail.service';
 import {
   fromPrismaJson,
   markStage,
@@ -45,7 +44,6 @@ export class DocumentationPipeline {
     private readonly aiProviderService: AiProviderService,
     private readonly chromaService: ChromaService,
     private readonly subscriptionService: SubscriptionService,
-    private readonly mailService: MailService,
     configService: ConfigService,
   ) {
     this.describeConcurrency =
@@ -323,14 +321,6 @@ export class DocumentationPipeline {
       this.logger.log(
         `[${jobId}] Documentation indexing completed for repository ${repositoryId}`,
       );
-
-      // ── Completion email ─────────────────────────────────────────────────────
-      await this.sendCompletionEmail(repositoryId, 'Documentation Indexing').catch(
-        (err) =>
-          this.logger.warn(
-            `Could not send completion email for doc job ${jobId}: ${(err as Error).message}`,
-          ),
-      );
     } catch (error) {
       const message =
         (error as Error).message || 'Unknown documentation pipeline error';
@@ -387,24 +377,6 @@ export class DocumentationPipeline {
       JSON.stringify(descriptions),
       'utf-8',
     );
-  }
-
-  private async sendCompletionEmail(
-    repositoryId: string,
-    pipeline: string,
-  ): Promise<void> {
-    const repository = await this.prisma.repository.findUnique({
-      where: { id: repositoryId },
-      include: { user: true },
-    });
-    if (!repository?.user?.email) return;
-
-    await this.mailService.sendJobCompletedEmail({
-      email: repository.user.email,
-      fullName: repository.user.fullName ?? undefined,
-      repositoryName: repository.name,
-      pipeline,
-    });
   }
 
   private async setStage(
