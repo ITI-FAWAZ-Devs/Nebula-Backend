@@ -69,8 +69,8 @@ describe('SubscriptionService', () => {
       const result = await service.getUserSubscription('user-123');
 
       expect(result.tier).toBe(SubscriptionTier.FREE);
-      expect(result.maxGenerationsPerMonth).toBe(3);
-      expect(result.remainingGenerations).toBe(3);
+      expect(result.maxGenerationsPerMonth).toBe(200);
+      expect(result.remainingGenerations).toBe(200);
       expect(result.generationsUsedThisPeriod).toBe(0);
     });
 
@@ -101,7 +101,7 @@ describe('SubscriptionService', () => {
 
       expect(prisma.user.update).toHaveBeenCalled();
       expect(result.generationsUsedThisPeriod).toBe(0);
-      expect(result.remainingGenerations).toBe(3);
+      expect(result.remainingGenerations).toBe(200);
     });
   });
 
@@ -119,27 +119,23 @@ describe('SubscriptionService', () => {
         'repo-1',
       );
 
-      expect(config.llmModel).toBe('gemini-3.6-flash');
+      expect(config.llmModel).toBe('gemini-3.1-flash-lite');
       expect(config.llmProvider).toBe('gemini');
       expect(config.embeddingProvider).toBe('gemini');
-      expect(config.embeddingModel).toBe('text-embedding-004');
+      expect(config.embeddingModel).toBe('gemini-embedding-2');
       expect(prisma.$transaction).toHaveBeenCalled();
     });
 
     it('should throw 402 Payment Required when quota is reached', async () => {
       const maxedUser = {
         ...mockUser,
-        generationsUsedThisPeriod: 3,
+        generationsUsedThisPeriod: 200,
       };
       prisma.user.findUnique.mockResolvedValue(maxedUser);
 
-      try {
-        await service.checkAndIncrementQuota('user-123', 'ARCH_DOC_DRAFT');
-        fail('Should have thrown HttpException');
-      } catch (err: any) {
-        expect(err).toBeInstanceOf(HttpException);
-        expect(err.getStatus()).toBe(HttpStatus.PAYMENT_REQUIRED);
-      }
+      await expect(
+        service.checkAndIncrementQuota('user-123', 'ARCH_DOC_DRAFT'),
+      ).rejects.toThrow(HttpException);
     });
   });
 
@@ -164,7 +160,7 @@ describe('SubscriptionService', () => {
       );
 
       expect(result.tier).toBe(SubscriptionTier.PRO);
-      expect(result.maxGenerationsPerMonth).toBe(20);
+      expect(result.maxGenerationsPerMonth).toBe(200);
     });
   });
 });

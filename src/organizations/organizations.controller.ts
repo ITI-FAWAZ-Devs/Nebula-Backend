@@ -24,6 +24,8 @@ import { InviteMemberDto } from './dto/invite-member.dto';
 import { ChangeMemberRoleDto } from './dto/change-member-role.dto';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ConnectionsService } from '../connections/connections.service';
+import { CreateConnectionDto } from '../connections/dto/create-connection.dto';
 
 @Controller('organizations')
 export class OrganizationsController {
@@ -31,6 +33,7 @@ export class OrganizationsController {
     private readonly organizationsService: OrganizationsService,
     private readonly mailService: MailService,
     private readonly prisma: PrismaService,
+    private readonly connectionsService: ConnectionsService,
   ) {}
 
   // ── Organization CRUD ──
@@ -88,6 +91,26 @@ export class OrganizationsController {
       success: true,
       message: 'Organization retrieved successfully',
       data: org,
+    };
+  }
+
+  /**
+   * DELETE /organizations/:id
+   * Deletes an organization. Only owner or org:manage permission holders can delete.
+   */
+  @Delete(':id')
+  async deleteOrganization(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const result = await this.organizationsService.deleteOrganization(
+      id,
+      userId,
+    );
+    return {
+      success: true,
+      message: 'Organization deleted successfully',
+      data: result,
     };
   }
 
@@ -339,6 +362,73 @@ export class OrganizationsController {
       success: true,
       message: 'Organization repositories retrieved successfully',
       data: repos,
+    };
+  }
+
+  // ── Organization Connections ──
+
+  /**
+   * POST /organizations/:id/connections
+   * Adds a shared provider connection to the organization.
+   * Requires connection:manage permission.
+   */
+  @Post(':id/connections')
+  @UseGuards(OrgPermissionGuard)
+  @RequirePermission(Permission.CONNECTION_MANAGE)
+  @HttpCode(HttpStatus.CREATED)
+  async createOrgConnection(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) orgId: string,
+    @Body() dto: CreateConnectionDto,
+  ) {
+    const connection = await this.connectionsService.createOrgConnection(
+      userId,
+      orgId,
+      dto,
+    );
+    const { encryptedToken, ...safeData } = connection;
+    return {
+      success: true,
+      message: 'Organization connection created successfully',
+      data: safeData,
+    };
+  }
+
+  /**
+   * GET /organizations/:id/connections
+   * Lists all shared connections for the organization.
+   * Any active org member can view connections.
+   */
+  @Get(':id/connections')
+  async listOrgConnections(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) orgId: string,
+  ) {
+    await this.organizationsService.getOrganization(orgId, userId);
+    const connections = await this.connectionsService.listOrgConnections(orgId);
+    return {
+      success: true,
+      message: 'Organization connections retrieved successfully',
+      data: connections,
+    };
+  }
+
+  /**
+   * DELETE /organizations/:id/connections/:connId
+   * Removes a shared connection from the organization.
+   * Requires connection:manage permission.
+   */
+  @Delete(':id/connections/:connId')
+  @UseGuards(OrgPermissionGuard)
+  @RequirePermission(Permission.CONNECTION_MANAGE)
+  async deleteOrgConnection(
+    @Param('id', ParseUUIDPipe) orgId: string,
+    @Param('connId', ParseUUIDPipe) connId: string,
+  ) {
+    await this.connectionsService.deleteOrgConnection(connId, orgId);
+    return {
+      success: true,
+      message: 'Organization connection deleted successfully',
     };
   }
 }

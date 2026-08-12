@@ -52,11 +52,13 @@ export class OrganizationsService {
           permissions: [
             'repo:read',
             'repo:import',
+            'repo:delete',
             'docs:read',
             'docs:write',
             'task:read',
             'task:write',
             'member:invite',
+            'connection:manage',
           ],
         },
       });
@@ -130,6 +132,35 @@ export class OrganizationsService {
     }
 
     return { ...org, memberCount: org._count.members };
+  }
+
+  /**
+   * Deletes an organization. Only the owner or a member with org:manage permission can delete.
+   */
+  async deleteOrganization(orgId: string, userId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+    });
+
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    if (org.ownerId !== userId) {
+      const permissions = await this.getMemberPermissions(userId, orgId);
+      if (!permissions || !permissions.includes('org:manage')) {
+        throw new ForbiddenException(
+          'You do not have permission to delete this organization',
+        );
+      }
+    }
+
+    await this.prisma.organization.delete({
+      where: { id: orgId },
+    });
+
+    this.logger.log(`Organization ${orgId} deleted by user ${userId}`);
+    return { id: orgId };
   }
 
   // ── Role Management ──

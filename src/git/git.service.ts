@@ -1,8 +1,7 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { AuthProvider } from '@prisma/client';
+import { Injectable, Logger } from '@nestjs/common';
 import simpleGit, { SimpleGit } from 'simple-git';
 import * as fs from 'fs/promises';
-import { UsersService } from '../users/users.service';
+import { ConnectionsService } from '../connections/connections.service';
 import { CloneRepositoryResult } from './interfaces/clone-repository-result.interface';
 
 export interface CloneOptions {
@@ -11,31 +10,37 @@ export interface CloneOptions {
   cloneUrl: string;
   destPath: string;
   branch: string;
+  orgId?: string | null;
+  connectionId?: string | null;
+  token?: string;
+  isPrivate?: boolean;
 }
 
 @Injectable()
 export class GitService {
   private readonly logger = new Logger(GitService.name);
 
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly connectionsService: ConnectionsService,
+  ) {}
 
   async clone(options: CloneOptions): Promise<CloneRepositoryResult> {
-    const { userId, repositoryId, cloneUrl, destPath, branch } = options;
+    const { userId, repositoryId, cloneUrl, destPath, branch, orgId, connectionId, isPrivate } = options;
 
-    const account = await this.usersService.findAccountByUserAndProvider(
-      userId,
-      AuthProvider.GITHUB,
-    );
-    if (!account?.accessToken) {
-      throw new BadRequestException(
-        'GitHub account not linked. Please connect your GitHub account.',
-      );
-    }
+    // Prefer an explicitly supplied token (e.g. for public repos the caller may pass null)
+    const token =
+      options.token !== undefined
+        ? options.token
+        : await this.connectionsService.resolveTokenForRepo({
+            userId,
+            orgId,
+            connectionId,
+            isPrivate,
+          });
 
-    const authenticatedUrl = this.buildAuthenticatedUrl(
-      cloneUrl,
-      account.accessToken,
-    );
+    const authenticatedUrl = token
+      ? this.buildAuthenticatedUrl(cloneUrl, token)
+      : cloneUrl;
 
     this.logger.log(`Cloning ${cloneUrl} into ${destPath} (branch: ${branch})`);
 

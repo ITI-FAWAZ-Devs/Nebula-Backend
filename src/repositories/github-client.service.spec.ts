@@ -1,20 +1,21 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  BadRequestException,
-  UnauthorizedException,
-  NotFoundException,
-  HttpException,
-} from '@nestjs/common';
-import { AuthProvider } from '@prisma/client';
+import { BadRequestException } from '@nestjs/common';
 import { GithubClientService } from './github-client.service';
-import { UsersService } from '../users/users.service';
+import { ConnectionsService } from '../connections/connections.service';
+import { GithubAdapter } from '../connections/adapters/github.adapter';
 
 describe('GithubClientService', () => {
   let service: GithubClientService;
-  let usersService: UsersService;
 
-  const mockUsersService = {
-    findAccountByUserAndProvider: jest.fn(),
+  const mockConnectionsService = {
+    fetchRemoteRepositories: jest.fn(),
+    findDefaultUserConnection: jest.fn(),
+    getConnectionById: jest.fn(),
+    getDecryptedToken: jest.fn(),
+  };
+
+  const mockGithubAdapter = {
+    getLatestCommitSha: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -22,17 +23,17 @@ describe('GithubClientService', () => {
       providers: [
         GithubClientService,
         {
-          provide: UsersService,
-          useValue: mockUsersService,
+          provide: ConnectionsService,
+          useValue: mockConnectionsService,
+        },
+        {
+          provide: GithubAdapter,
+          useValue: mockGithubAdapter,
         },
       ],
     }).compile();
 
     service = module.get<GithubClientService>(GithubClientService);
-    usersService = module.get<UsersService>(UsersService);
-
-    // Mock global fetch
-    global.fetch = jest.fn();
   });
 
   afterEach(() => {
@@ -44,41 +45,17 @@ describe('GithubClientService', () => {
   });
 
   describe('getRepositories', () => {
-    it('should throw BadRequestException if GITHUB account is not linked', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue(null);
-
-      await expect(service.getRepositories('user-123')).rejects.toThrow(
-        BadRequestException,
-      );
-      expect(
-        mockUsersService.findAccountByUserAndProvider,
-      ).toHaveBeenCalledWith('user-123', AuthProvider.GITHUB);
-    });
-
-    it('should fetch and return repositories from GitHub (no pagination)', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
-        accessToken: 'mock-token',
-      });
-
-      const mockGithubRepos = [
+    it('should fetch remote repositories using ConnectionsService', async () => {
+      mockConnectionsService.fetchRemoteRepositories.mockResolvedValue([
         {
-          id: 111,
+          providerRepoId: '111',
           name: 'repo-1',
-          owner: { login: 'owner-1' },
-          default_branch: 'main',
-          private: false,
-          clone_url: 'https://github.com/owner-1/repo-1.git',
+          owner: 'owner-1',
+          defaultBranch: 'main',
+          isPrivate: false,
+          cloneUrl: 'https://github.com/owner-1/repo-1.git',
         },
-      ];
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: {
-          get: jest.fn().mockReturnValue(null), // no Link header
-        },
-        json: jest.fn().mockResolvedValue(mockGithubRepos),
-      });
+      ]);
 
       const result = await service.getRepositories('user-123');
 
@@ -91,146 +68,31 @@ describe('GithubClientService', () => {
         isPrivate: false,
         cloneUrl: 'https://github.com/owner-1/repo-1.git',
       });
-      expect(global.fetch).toHaveBeenCalledTimes(1);
-    });
-
-    it('should loop and aggregate repositories when pagination headers indicate a next page', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
-        accessToken: 'mock-token',
-      });
-
-      const page1 = Array.from({ length: 100 }, (_, i) => ({
-        id: i,
-        name: `repo-${i}`,
-        owner: { login: 'owner-1' },
-        default_branch: 'main',
-        private: false,
-        clone_url: `https://github.com/owner-1/repo-${i}.git`,
-      }));
-
-      const page2 = [
-        {
-          id: 101,
-          name: 'repo-101',
-          owner: { login: 'owner-1' },
-          default_branch: 'main',
-          private: true,
-          clone_url: 'https://github.com/owner-1/repo-101.git',
-        },
-      ];
-
-      // Mock fetch responses for page 1 and page 2
-      (global.fetch as jest.Mock)
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          headers: {
-            get: jest
-              .fn()
-              .mockReturnValue(
-                'Link: <https://api.github.com/...page=2>; rel="next"',
-              ),
-          },
-          json: jest.fn().mockResolvedValue(page1),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          headers: {
-            get: jest.fn().mockReturnValue(null),
-          },
-          json: jest.fn().mockResolvedValue(page2),
-        });
-
-      const result = await service.getRepositories('user-123', true);
-
-      expect(result).toHaveLength(101);
-      expect(global.fetch).toHaveBeenCalledTimes(2);
-      expect(result[100].isPrivate).toBe(true);
-    });
-
-    it('should utilize cache on subsequent requests unless forceRefresh is true', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
-        accessToken: 'mock-token',
-      });
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: { get: jest.fn().mockReturnValue(null) },
-        json: jest
-          .fn()
-          .mockResolvedValue([{ id: 99, owner: { login: 'owner-1' } }]),
-      });
-
-      // First call (fetches from API)
-      await service.getRepositories('user-123');
-      expect(global.fetch).toHaveBeenCalledTimes(1);
-
-      // Second call (uses cached value, fetch not called again)
-      await service.getRepositories('user-123');
-      expect(global.fetch).toHaveBeenCalledTimes(1);
-
-      // Third call with forceRefresh = true (bypasses cache and calls API again)
-      await service.getRepositories('user-123', true);
-      expect(global.fetch).toHaveBeenCalledTimes(2);
-    });
-
-    it('should throw UnauthorizedException if GitHub token is invalid (401)', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
-        accessToken: 'invalid-token',
-      });
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: false,
-        status: 401,
-        json: jest.fn().mockResolvedValue({ message: 'Bad credentials' }),
-      });
-
-      await expect(service.getRepositories('user-123', true)).rejects.toThrow(
-        UnauthorizedException,
+      expect(mockConnectionsService.fetchRemoteRepositories).toHaveBeenCalledWith(
+        'user-123',
+        undefined,
+        'GITHUB',
       );
     });
 
-    it('should throw HttpException for other API errors (e.g., 403 or 500)', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
-        accessToken: 'token',
-      });
+    it('should throw BadRequestException if no active connection exists', async () => {
+      mockConnectionsService.fetchRemoteRepositories.mockRejectedValue(
+        new BadRequestException('No active GITHUB connection found.'),
+      );
 
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: false,
-        status: 403,
-        json: jest.fn().mockResolvedValue({ message: 'Rate limit exceeded' }),
-      });
-
-      await expect(service.getRepositories('user-123', true)).rejects.toThrow(
-        HttpException,
+      await expect(service.getRepositories('user-123')).rejects.toThrow(
+        BadRequestException,
       );
     });
   });
 
   describe('getLatestCommitSha', () => {
-    it('should throw BadRequestException if GITHUB account is not linked', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue(null);
-
-      await expect(
-        service.getLatestCommitSha('user-123', 'owner-1', 'repo-1', 'main'),
-      ).rejects.toThrow(BadRequestException);
-      expect(
-        mockUsersService.findAccountByUserAndProvider,
-      ).toHaveBeenCalledWith('user-123', AuthProvider.GITHUB);
-    });
-
-    it('should return the head commit sha from the GitHub API', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
-        accessToken: 'mock-token',
+    it('should return latest commit sha via adapter', async () => {
+      mockConnectionsService.findDefaultUserConnection.mockResolvedValue({
+        id: 'conn-1',
       });
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({ sha: 'abc123' }),
-      });
+      mockConnectionsService.getDecryptedToken.mockResolvedValue('raw-token');
+      mockGithubAdapter.getLatestCommitSha.mockResolvedValue('sha-123');
 
       const sha = await service.getLatestCommitSha(
         'user-123',
@@ -239,63 +101,13 @@ describe('GithubClientService', () => {
         'main',
       );
 
-      expect(sha).toBe('abc123');
-      expect(global.fetch).toHaveBeenCalledWith(
-        'https://api.github.com/repos/owner-1/repo-1/commits/main',
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            Authorization: 'Bearer mock-token',
-          }),
-        }),
+      expect(sha).toBe('sha-123');
+      expect(mockGithubAdapter.getLatestCommitSha).toHaveBeenCalledWith(
+        'raw-token',
+        'owner-1',
+        'repo-1',
+        'main',
       );
-    });
-
-    it('should throw UnauthorizedException if GitHub token is invalid (401)', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
-        accessToken: 'invalid-token',
-      });
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: false,
-        status: 401,
-        json: jest.fn().mockResolvedValue({ message: 'Bad credentials' }),
-      });
-
-      await expect(
-        service.getLatestCommitSha('user-123', 'owner-1', 'repo-1', 'main'),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('should throw NotFoundException if repository is missing (404)', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
-        accessToken: 'token',
-      });
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: false,
-        status: 404,
-        json: jest.fn().mockResolvedValue({ message: 'Not Found' }),
-      });
-
-      await expect(
-        service.getLatestCommitSha('user-123', 'owner-1', 'repo-1', 'main'),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw HttpException for other API errors', async () => {
-      mockUsersService.findAccountByUserAndProvider.mockResolvedValue({
-        accessToken: 'token',
-      });
-
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: false,
-        status: 500,
-        json: jest.fn().mockResolvedValue({ message: 'Internal error' }),
-      });
-
-      await expect(
-        service.getLatestCommitSha('user-123', 'owner-1', 'repo-1', 'main'),
-      ).rejects.toThrow(HttpException);
     });
   });
 });

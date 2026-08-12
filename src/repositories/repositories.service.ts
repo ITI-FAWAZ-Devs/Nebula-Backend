@@ -3,17 +3,22 @@ import {
   ConflictException,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
-import { DocStatus, RepositoryStatus } from '@prisma/client';
+import { DocStatus, RepositoryStatus, ConnectionProvider } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ImportRepoDto } from './dto/import-repo.dto';
+import { ImportFromUrlDto } from './dto/import-url.dto';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { ConnectionsService } from '../connections/connections.service';
+import { parseRepoUrl } from '../connections/utils/repo-url-parser.util';
 
 @Injectable()
 export class RepositoriesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly organizationsService: OrganizationsService,
+    private readonly connectionsService: ConnectionsService,
   ) {}
 
   /**
@@ -35,12 +40,48 @@ export class RepositoriesService {
       }
     }
 
+    // Resolve connection: explicit → org default → user default
+    let connectionId = dto.connectionId;
+    if (!connectionId) {
+      const resolved = await this.connectionsService.resolveTokenForRepo({
+        userId,
+        orgId: dto.organizationId,
+        isPrivate: dto.isPrivate,
+        provider: ConnectionProvider.GITHUB,
+      }).catch(() => null);
+      // resolveTokenForRepo returns the token, but we need the connectionId — look it up
+      if (dto.organizationId) {
+        const orgConn = await this.connectionsService.findDefaultOrgConnection(
+          dto.organizationId,
+          ConnectionProvider.GITHUB,
+        );
+        if (orgConn) connectionId = orgConn.id;
+      }
+      if (!connectionId) {
+        const userConn = await this.connectionsService.findDefaultUserConnection(
+          userId,
+          ConnectionProvider.GITHUB,
+        );
+        if (userConn) connectionId = userConn.id;
+      }
+    }
+
+    const providerRepoId = dto.providerRepoId || dto.githubRepoId;
+    const githubRepoId = dto.githubRepoId || dto.providerRepoId;
+
+    // owner of the record: org-scoped repos use the org as the logical owner via organizationId;
+    // userId on the repository still records who imported it for org repos too
+    const recordUserId = dto.organizationId ? userId : userId;
+
     // 1. Check duplicate at application level
     const existing = await this.prisma.repository.findFirst({
       where: {
-        userId,
         organizationId: dto.organizationId ?? null,
-        githubRepoId: dto.githubRepoId,
+        userId: dto.organizationId ? undefined : userId,
+        OR: [
+          { githubRepoId: githubRepoId ?? undefined },
+          { providerRepoId: providerRepoId ?? undefined },
+        ],
       },
     });
 
@@ -52,9 +93,13 @@ export class RepositoriesService {
     try {
       return await this.prisma.repository.create({
         data: {
-          userId,
+          userId: recordUserId,
+          importedByUserId: userId,
           organizationId: dto.organizationId ?? null,
-          githubRepoId: dto.githubRepoId,
+          connectionId: connectionId ?? null,
+          githubRepoId,
+          providerRepoId,
+          provider: ConnectionProvider.GITHUB,
           name: dto.name,
           owner: dto.owner,
           defaultBranch: dto.defaultBranch,
@@ -65,6 +110,114 @@ export class RepositoriesService {
       });
     } catch (error: any) {
       // P2002 is Prisma's code for unique constraint violation
+      if (error?.code === 'P2002') {
+        throw new ConflictException(
+          'This repository has already been imported.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Imports a public or private repository from a URL or shorthand (e.g. "https://github.com/owner/repo" or "owner/repo").
+   * Fetches metadata dynamically from the provider using an optional connection token.
+   */
+  async importFromUrl(userId: string, dto: ImportFromUrlDto) {
+    if (dto.organizationId) {
+      const permissions =
+        await this.organizationsService.getMemberPermissions(
+          userId,
+          dto.organizationId,
+        );
+      if (!permissions || !permissions.includes('repo:import')) {
+        throw new ForbiddenException(
+          'You do not have permission to import repositories in this organization',
+        );
+      }
+    }
+
+    const { provider, owner, repo } = parseRepoUrl(dto.url);
+
+    let connectionId = dto.connectionId;
+    let token: string | null = null;
+    try {
+      token = await this.connectionsService.resolveTokenForRepo({
+        userId,
+        orgId: dto.organizationId,
+        connectionId,
+        provider,
+      });
+    } catch {
+      token = null;
+    }
+
+    if (!connectionId && token) {
+      if (dto.organizationId) {
+        const orgConn = await this.connectionsService.findDefaultOrgConnection(
+          dto.organizationId,
+          provider,
+        );
+        if (orgConn) connectionId = orgConn.id;
+      }
+      if (!connectionId) {
+        const userConn = await this.connectionsService.findDefaultUserConnection(
+          userId,
+          provider,
+        );
+        if (userConn) connectionId = userConn.id;
+      }
+    }
+
+    const meta = await this.connectionsService.fetchRepoMetadata(
+      owner,
+      repo,
+      token,
+      provider,
+    );
+
+    if (meta.isPrivate && !token) {
+      throw new BadRequestException(
+        'A valid connection is required to import private repositories.',
+      );
+    }
+
+    const recordUserId = dto.organizationId ? userId : userId;
+
+    const existing = await this.prisma.repository.findFirst({
+      where: {
+        organizationId: dto.organizationId ?? null,
+        userId: dto.organizationId ? undefined : userId,
+        OR: [
+          { githubRepoId: meta.providerRepoId },
+          { providerRepoId: meta.providerRepoId },
+        ],
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException('This repository has already been imported.');
+    }
+
+    try {
+      return await this.prisma.repository.create({
+        data: {
+          userId: recordUserId,
+          importedByUserId: userId,
+          organizationId: dto.organizationId ?? null,
+          connectionId: connectionId ?? null,
+          githubRepoId: meta.providerRepoId,
+          providerRepoId: meta.providerRepoId,
+          provider,
+          name: meta.name,
+          owner: meta.owner,
+          defaultBranch: meta.defaultBranch,
+          isPrivate: meta.isPrivate,
+          cloneUrl: meta.cloneUrl,
+          status: RepositoryStatus.IMPORTED,
+        },
+      });
+    } catch (error: any) {
       if (error?.code === 'P2002') {
         throw new ConflictException(
           'This repository has already been imported.',
@@ -198,9 +351,13 @@ export class RepositoriesService {
           userId,
           repo.organizationId,
         );
-      if (!permissions) {
+      if (
+        !permissions ||
+        (!permissions.includes('repo:delete') &&
+          !permissions.includes('org:manage'))
+      ) {
         throw new ForbiddenException(
-          'You do not have access to this repository',
+          'You do not have permission to delete repositories in this organization',
         );
       }
     } else if (repo.userId !== userId) {
