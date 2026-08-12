@@ -17,6 +17,7 @@ import aiProviderConfig from './ai-provider.config';
 import documentationConfig from './documentation.config';
 import draftingConfig from './drafting.config';
 import subscriptionConfig from './subscription.config';
+import voiceConfig from './voice.config';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import subscriptionConfig from './subscription.config';
         documentationConfig,
         draftingConfig,
         subscriptionConfig,
+        voiceConfig,
       ],
       envFilePath: ['.env'],
     }),

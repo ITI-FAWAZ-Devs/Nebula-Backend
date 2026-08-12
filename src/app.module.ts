@@ -20,6 +20,7 @@ import { OrganizationsModule } from './organizations/organizations.module';
 import { AgentRagModule } from './agent-rag/agent-rag.module';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { ConnectionsModule } from './connections/connections.module';
+import { VoiceModule } from './voice/voice.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -59,6 +60,7 @@ import { AppService } from './app.service';
     AgentRagModule,
     SubscriptionModule,
     ConnectionsModule,
+    VoiceModule,
   ],
   controllers: [AppController],
   providers: [

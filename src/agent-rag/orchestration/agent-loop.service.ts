@@ -29,6 +29,7 @@ export class AgentLoopService {
     repositoryId: string;
     question: string;
     recentNodeIds?: string[];
+    responseStyle?: 'text' | 'voice';
   }): Promise<AgentLoopResult> {
     const collected: RetrievalHit[] = [];
     const toolsUsed: string[] = [];
@@ -72,6 +73,7 @@ export class AgentLoopService {
       params.question,
       contextText,
       selectedHits,
+      params.responseStyle,
     );
 
     const citedNodeIds = [
@@ -104,6 +106,7 @@ export class AgentLoopService {
     repositoryId: string;
     question: string;
     recentNodeIds?: string[];
+    responseStyle?: 'text' | 'voice';
   }): AsyncGenerator<{
     event: 'token' | 'citation' | 'done' | 'error';
     data: unknown;
@@ -160,6 +163,7 @@ export class AgentLoopService {
         params.question,
         contextText,
         selectedHits,
+        params.responseStyle,
       )) {
         if (chunk.type === 'token') {
           answer += chunk.data as string;

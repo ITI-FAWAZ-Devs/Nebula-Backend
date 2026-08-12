@@ -11,19 +11,32 @@ export interface SynthesizeResult {
 export class SynthesizerService {
   constructor(private readonly gemini: GeminiService) {}
 
-  private systemInstruction(): string {
-    return [
+  private systemInstruction(responseStyle?: 'text' | 'voice'): string {
+    const base = [
       'You answer questions about a code repository using ONLY the provided context.',
       'For every factual claim, include an inline citation like [filePath:lineRange] when lineRange is known, otherwise [filePath].',
       'If the context does not cover the question, say you do not know — do not invent repository details.',
       'Be concise and precise.',
-    ].join(' ');
+    ];
+
+    if (responseStyle === 'voice') {
+      base.push(
+        'This answer will be read aloud.',
+        'Keep the response conversational and concise — 2 to 4 short sentences.',
+        'Name real files and functions when useful but avoid reading long paths verbatim.',
+        'Never invent symbols, file names, or architecture.',
+        'If the context is insufficient, explicitly say so.',
+      );
+    }
+
+    return base.join(' ');
   }
 
   async synthesize(
     question: string,
     contextText: string,
     selectedHits: RetrievalHit[],
+    responseStyle?: 'text' | 'voice',
   ): Promise<SynthesizeResult> {
     const prompt = [
       `Question: ${question}`,
@@ -35,7 +48,7 @@ export class SynthesizerService {
     ].join('\n');
 
     const answer = await this.gemini.generateContent(
-      `${this.systemInstruction()}\n\n${prompt}`,
+      `${this.systemInstruction(responseStyle)}\n\n${prompt}`,
     );
 
     return {
@@ -48,6 +61,7 @@ export class SynthesizerService {
     question: string,
     contextText: string,
     selectedHits: RetrievalHit[],
+    responseStyle?: 'text' | 'voice',
   ): AsyncGenerator<{ type: 'token' | 'done'; data: unknown }> {
     const prompt = [
       `Question: ${question}`,
@@ -60,7 +74,7 @@ export class SynthesizerService {
 
     let answer = '';
     for await (const token of this.gemini.generateContentStream({
-      systemInstruction: this.systemInstruction(),
+      systemInstruction: this.systemInstruction(responseStyle),
       prompt,
     })) {
       answer += token;
