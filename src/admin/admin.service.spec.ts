@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { DocumentationJobStatus, UserRole } from '@prisma/client';
 import { AdminService } from './admin.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -17,6 +17,7 @@ describe('AdminService', () => {
     generatedDoc: { count: jest.Mock };
     docSection: { count: jest.Mock };
     usageLog: { count: jest.Mock };
+    documentationJob: { count: jest.Mock };
   };
 
   const mockUserRow = {
@@ -41,6 +42,7 @@ describe('AdminService', () => {
       generatedDoc: { count: jest.fn() },
       docSection: { count: jest.fn() },
       usageLog: { count: jest.fn() },
+      documentationJob: { count: jest.fn() },
     };
 
     service = new AdminService(prisma as unknown as PrismaService);
@@ -115,6 +117,63 @@ describe('AdminService', () => {
         generatedDocs: 3,
         docSections: 40,
         usageLogs: 2,
+      });
+    });
+  });
+
+  describe('getDashboardStats', () => {
+    it('should return dashboard statistics', async () => {
+      prisma.user.count.mockResolvedValueOnce(10).mockResolvedValueOnce(7);
+      prisma.repository.count.mockResolvedValue(4);
+      prisma.documentationJob.count
+        .mockResolvedValueOnce(6)
+        .mockResolvedValueOnce(4)
+        .mockResolvedValueOnce(1);
+
+      const result = await service.getDashboardStats();
+
+      expect(result).toEqual({
+        totalUsers: 10,
+        activeUsers: 7,
+        totalImportedRepositories: 4,
+        totalDocumentationJobs: 6,
+        successfulDocumentationJobs: 4,
+        failedDocumentationJobs: 1,
+      });
+    });
+
+    it('should filter documentation jobs by status', async () => {
+      prisma.user.count.mockResolvedValue(0);
+      prisma.repository.count.mockResolvedValue(0);
+      prisma.documentationJob.count.mockResolvedValue(0);
+
+      await service.getDashboardStats();
+
+      expect(prisma.user.count).toHaveBeenCalledWith({
+        where: { isEmailVerified: true },
+      });
+      expect(prisma.documentationJob.count).toHaveBeenCalledWith({
+        where: { status: DocumentationJobStatus.COMPLETED },
+      });
+      expect(prisma.documentationJob.count).toHaveBeenCalledWith({
+        where: { status: DocumentationJobStatus.FAILED },
+      });
+    });
+
+    it('should return zeros when the database is empty', async () => {
+      prisma.user.count.mockResolvedValue(0);
+      prisma.repository.count.mockResolvedValue(0);
+      prisma.documentationJob.count.mockResolvedValue(0);
+
+      const result = await service.getDashboardStats();
+
+      expect(result).toEqual({
+        totalUsers: 0,
+        activeUsers: 0,
+        totalImportedRepositories: 0,
+        totalDocumentationJobs: 0,
+        successfulDocumentationJobs: 0,
+        failedDocumentationJobs: 0,
       });
     });
   });

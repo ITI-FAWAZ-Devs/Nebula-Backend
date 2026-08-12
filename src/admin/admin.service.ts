@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { DocumentationJobStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -80,6 +80,37 @@ export class AdminService {
       generatedDocs,
       docSections,
       usageLogs,
+    };
+  }
+
+  async getDashboardStats() {
+    const [
+      totalUsers,
+      activeUsers,
+      totalImportedRepositories,
+      totalDocumentationJobs,
+      successfulDocumentationJobs,
+      failedDocumentationJobs,
+    ] = await this.prisma.$transaction([
+      this.prisma.user.count(),
+      this.prisma.user.count({ where: { isEmailVerified: true } }),
+      this.prisma.repository.count(),
+      this.prisma.documentationJob.count(),
+      this.prisma.documentationJob.count({
+        where: { status: DocumentationJobStatus.COMPLETED },
+      }),
+      this.prisma.documentationJob.count({
+        where: { status: DocumentationJobStatus.FAILED },
+      }),
+    ]);
+
+    return {
+      totalUsers,
+      activeUsers,
+      totalImportedRepositories,
+      totalDocumentationJobs,
+      successfulDocumentationJobs,
+      failedDocumentationJobs,
     };
   }
 

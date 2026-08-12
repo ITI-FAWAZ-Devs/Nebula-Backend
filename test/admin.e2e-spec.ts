@@ -35,6 +35,7 @@ describe('Admin authorization (e2e)', () => {
     generatedDoc: { count: jest.fn().mockResolvedValue(0) },
     docSection: { count: jest.fn().mockResolvedValue(0) },
     usageLog: { count: jest.fn().mockResolvedValue(0) },
+    documentationJob: { count: jest.fn().mockResolvedValue(0) },
   };
 
   beforeAll(async () => {
@@ -56,7 +57,7 @@ describe('Admin authorization (e2e)', () => {
     await app.close();
   });
 
-  const endpoints = ['/admin/users', '/admin/stats'];
+  const endpoints = ['/admin/users', '/admin/stats', '/admin/dashboard/stats'];
 
   describe('Admin user', () => {
     it.each(endpoints)('should access %s (200)', async (endpoint) => {

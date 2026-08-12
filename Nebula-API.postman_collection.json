@@ -1458,6 +1458,54 @@
 					]
 				},
 				{
+					"name": "Get Dashboard Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/dashboard/stats",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"dashboard",
+								"stats"
+							]
+						},
+						"description": "Return platform-level statistics for the Admin Dashboard. **ADMIN only.**\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"totalUsers\": 42,\n    \"activeUsers\": 31,\n    \"totalImportedRepositories\": 17,\n    \"totalDocumentationJobs\": 9,\n    \"successfulDocumentationJobs\": 7,\n    \"failedDocumentationJobs\": 2\n  }\n}\n```\n\n- `activeUsers` counts users with `isEmailVerified = true`\n- `successfulDocumentationJobs` = jobs with status `COMPLETED`\n- `failedDocumentationJobs` = jobs with status `FAILED`"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Dashboard stats retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('totalUsers');",
+									"    pm.expect(json.data).to.have.property('activeUsers');",
+									"    pm.expect(json.data).to.have.property('totalImportedRepositories');",
+									"    pm.expect(json.data).to.have.property('totalDocumentationJobs');",
+									"    pm.expect(json.data).to.have.property('successfulDocumentationJobs');",
+									"    pm.expect(json.data).to.have.property('failedDocumentationJobs');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
 					"name": "Update User Role",
 					"request": {
 						"method": "PATCH",

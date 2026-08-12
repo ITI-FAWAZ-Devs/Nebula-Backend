@@ -57,6 +57,20 @@ export class AdminController {
   }
 
   /**
+   * GET /admin/dashboard/stats
+   * Returns platform-level statistics for the Admin Dashboard. ADMIN only.
+   */
+  @Get('dashboard/stats')
+  async getDashboardStats() {
+    const stats = await this.adminService.getDashboardStats();
+    return {
+      success: true,
+      message: 'Dashboard statistics retrieved successfully',
+      data: stats,
+    };
+  }
+
+  /**
    * PATCH /admin/users/:id/role
    * Promotes or demotes a user's role. ADMIN only.
    */
