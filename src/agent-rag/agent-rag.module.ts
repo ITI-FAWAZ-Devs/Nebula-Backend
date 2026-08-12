@@ -36,6 +36,6 @@ import { AgentSessionStore } from './session/agent-session.store';
     AgentLoopService,
     AgentSessionStore,
   ],
-  exports: [AgentLoopService, HybridRetrievalService],
+  exports: [AgentLoopService, HybridRetrievalService, AgentSessionStore],
 })
 export class AgentRagModule {}
