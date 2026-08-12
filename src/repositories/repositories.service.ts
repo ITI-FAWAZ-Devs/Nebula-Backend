@@ -351,9 +351,13 @@ export class RepositoriesService {
           userId,
           repo.organizationId,
         );
-      if (!permissions) {
+      if (
+        !permissions ||
+        (!permissions.includes('repo:delete') &&
+          !permissions.includes('org:manage'))
+      ) {
         throw new ForbiddenException(
-          'You do not have access to this repository',
+          'You do not have permission to delete repositories in this organization',
         );
       }
     } else if (repo.userId !== userId) {

@@ -94,6 +94,26 @@ export class OrganizationsController {
     };
   }
 
+  /**
+   * DELETE /organizations/:id
+   * Deletes an organization. Only owner or org:manage permission holders can delete.
+   */
+  @Delete(':id')
+  async deleteOrganization(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const result = await this.organizationsService.deleteOrganization(
+      id,
+      userId,
+    );
+    return {
+      success: true,
+      message: 'Organization deleted successfully',
+      data: result,
+    };
+  }
+
   // ── Role Management ──
 
   /**
