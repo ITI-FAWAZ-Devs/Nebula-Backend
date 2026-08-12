@@ -9,7 +9,11 @@ jest.mock('nodemailer', () => ({
 }));
 
 jest.mock('fs', () => ({
-  readFileSync: jest.fn().mockReturnValue('<html>{{fullName}} {{repositoryName}} {{pipeline}}</html>'),
+  readFileSync: jest
+    .fn()
+    .mockReturnValue(
+      '<html>{{fullName}} {{repositoryName}} {{pipeline}}</html>',
+    ),
 }));
 
 const mockConfigService = {

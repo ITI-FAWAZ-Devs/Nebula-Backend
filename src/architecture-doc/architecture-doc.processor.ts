@@ -12,7 +12,11 @@ import { DraftingOrchestratorService } from './drafting-orchestrator.service';
 import { ArchitectureDocEmbedderService } from './architecture-doc-embedder.service';
 import { MailService } from '../mail/mail.service';
 import { DraftSection, SectionPlan } from './dto/architecture-draft.dto';
-import { fromPrismaJson, PipelineCheckpoint } from '../common/pipeline-checkpoint';
+import {
+  fromPrismaJson,
+  toPrismaJson,
+  PipelineCheckpoint,
+} from '../common/pipeline-checkpoint';
 
 const STATUS_ORDER: DocStatus[] = [
   DocStatus.PENDING,
@@ -57,8 +61,8 @@ export class ArchitectureDocProcessor extends WorkerHost {
       const checkpoint = fromPrismaJson(docRow?.checkpoint);
       const artifacts = checkpoint.artifacts as DraftCheckpointArtifacts;
 
-      const resumedSections = (artifacts.sections ?? []) as DraftSection[];
-      const resumedPlan = (artifacts.sectionPlan ?? []) as SectionPlan[];
+      const resumedSections = artifacts.sections ?? [];
+      const resumedPlan = artifacts.sectionPlan ?? [];
 
       if (resumedSections.length > 0) {
         this.logger.log(
@@ -66,7 +70,11 @@ export class ArchitectureDocProcessor extends WorkerHost {
         );
       }
 
-      await this.updateStatusMonotonic(repositoryId, documentId, DocStatus.RETRIEVING);
+      await this.updateStatusMonotonic(
+        repositoryId,
+        documentId,
+        DocStatus.RETRIEVING,
+      );
 
       this.logger.log(`[${documentId}] Calling drafting orchestrator...`);
       const draft = await this.draftingOrchestrator.draft(
@@ -74,7 +82,8 @@ export class ArchitectureDocProcessor extends WorkerHost {
           repositoryId,
           documentId,
           userId,
-          resumedSections: resumedSections.length > 0 ? resumedSections : undefined,
+          resumedSections:
+            resumedSections.length > 0 ? resumedSections : undefined,
           resumedPlan: resumedPlan.length > 0 ? resumedPlan : undefined,
         },
         async (status) => {
@@ -88,7 +97,9 @@ export class ArchitectureDocProcessor extends WorkerHost {
             artifacts: {
               sectionPlan: plan,
               sections: [
-                ...(artifacts.sections ?? []).filter((s: DraftSection) => s.key !== section.key),
+                ...(artifacts.sections ?? []).filter(
+                  (s: DraftSection) => s.key !== section.key,
+                ),
                 section,
               ],
             },
@@ -199,11 +210,13 @@ export class ArchitectureDocProcessor extends WorkerHost {
       }
 
       // ── Completion email ───────────────────────────────────────────────────
-      await this.sendCompletionEmail(repositoryId, 'Architecture Documentation').catch(
-        (err) =>
-          this.logger.warn(
-            `[${documentId}] Could not send completion email: ${(err as Error).message}`,
-          ),
+      await this.sendCompletionEmail(
+        repositoryId,
+        'Architecture Documentation',
+      ).catch((err) =>
+        this.logger.warn(
+          `[${documentId}] Could not send completion email: ${(err as Error).message}`,
+        ),
       );
     } catch (error) {
       this.logger.error(
@@ -235,7 +248,7 @@ export class ArchitectureDocProcessor extends WorkerHost {
   ): Promise<void> {
     await this.prisma.generatedDoc.update({
       where: { id: documentId },
-      data: { checkpoint: checkpoint as object },
+      data: { checkpoint: toPrismaJson(checkpoint) },
     });
   }
 

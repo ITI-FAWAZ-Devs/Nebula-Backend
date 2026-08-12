@@ -139,7 +139,9 @@ describe('StaleJobRecoveryService', () => {
       expect(docQueue.add).not.toHaveBeenCalled();
       expect(prisma.documentationJob.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: DocumentationJobStatus.FAILED }),
+          data: expect.objectContaining({
+            status: DocumentationJobStatus.FAILED,
+          }),
         }),
       );
     });

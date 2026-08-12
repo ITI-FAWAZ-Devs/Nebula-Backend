@@ -1,7 +1,4 @@
-import {
-  normalizeSourceLocation,
-  buildGraphSummary,
-} from './source-location';
+import { normalizeSourceLocation, buildGraphSummary } from './source-location';
 
 describe('normalizeSourceLocation', () => {
   it('parses L42', () => {

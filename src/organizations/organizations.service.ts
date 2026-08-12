@@ -281,6 +281,34 @@ export class OrganizationsService {
       return this.prisma.organizationMember.update({
         where: { id: existing.id },
         data: { roleId, inviteToken: crypto.randomUUID(), invitedBy: invitedByUserId },
+    // Find the user by email
+    const invitee = await this.prisma.user.findUnique({
+      where: { email },
+    });
+    if (!invitee) {
+      throw new NotFoundException(
+        'No user found with this email address. They must create a Nebula account first.',
+      );
+    }
+
+    // Check if already a member
+    const existingMember = await this.prisma.organizationMember.findUnique({
+      where: { orgId_userId: { orgId, userId: invitee.id } },
+    });
+    if (existingMember) {
+      if (existingMember.status === MemberStatus.ACTIVE) {
+        throw new ConflictException(
+          'This user is already an active member of the organization',
+        );
+      }
+      // Re-send invite: update the existing PENDING record
+      const updated = await this.prisma.organizationMember.update({
+        where: { id: existingMember.id },
+        data: {
+          roleId,
+          inviteToken: crypto.randomUUID(),
+          invitedBy: invitedByUserId,
+        },
       });
     }
 
@@ -331,6 +359,7 @@ export class OrganizationsService {
     });
 
     this.logger.log(`User ${userId} accepted invite to org ${member.orgId}`);
+
     return updated;
   }
 
@@ -356,6 +385,9 @@ export class OrganizationsService {
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
     if (org && member.userId === org.ownerId) {
       throw new ForbiddenException("Cannot change the organization owner's role");
+      throw new ForbiddenException(
+        "Cannot change the organization owner's role",
+      );
     }
 
     const role = await this.prisma.role.findUnique({ where: { id: roleId } });

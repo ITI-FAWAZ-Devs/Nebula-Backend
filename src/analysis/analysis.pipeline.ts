@@ -18,6 +18,7 @@ import {
   markStage,
   hasStage,
   emptyCheckpoint,
+  toPrismaJson,
   ensureCheckpointDir,
   removeCheckpointDir,
   getWorkspaceRoot,
@@ -68,7 +69,10 @@ export class AnalysisPipeline {
         where: { id: repositoryId },
       });
 
-      const cpDir = await ensureCheckpointDir(this.workspaceRoot, analysisJobId);
+      const cpDir = await ensureCheckpointDir(
+        this.workspaceRoot,
+        analysisJobId,
+      );
       const checkpointGraphPath = path.join(cpDir, 'graph.json');
 
       // ── Stage: workspace / clone ────────────────────────────────────────────
@@ -117,8 +121,16 @@ export class AnalysisPipeline {
         this.logger.log(
           `[${analysisJobId}] Skipping clone — reusing localPath ${localPath}`,
         );
-        localPath = (checkpoint.artifacts.localPath as string | undefined) ?? localPath ?? '';
-        await this.setStage(analysisJobId, repositoryId, 'clone', RepositoryStatus.CLONING);
+        localPath =
+          (checkpoint.artifacts.localPath as string | undefined) ??
+          localPath ??
+          '';
+        await this.setStage(
+          analysisJobId,
+          repositoryId,
+          'clone',
+          RepositoryStatus.CLONING,
+        );
         await this.setStage(analysisJobId, repositoryId, 'clone_skipped', null);
       }
 
@@ -282,14 +294,16 @@ export class AnalysisPipeline {
     const result = await this.graphifyService.analyze(project, ws);
 
     // Persist graphify JSON to checkpoint dir so it survives a crash
-    await fs.copyFile(result.outputPath ?? checkpointGraphPath, checkpointGraphPath).catch(() => {
-      // outputPath may not exist if graphify produced an empty fallback; write empty
-      return fs.writeFile(
-        checkpointGraphPath,
-        JSON.stringify({ nodes: result.nodes, edges: result.edges }),
-        'utf-8',
-      );
-    });
+    await fs
+      .copyFile(result.outputPath ?? checkpointGraphPath, checkpointGraphPath)
+      .catch(() => {
+        // outputPath may not exist if graphify produced an empty fallback; write empty
+        return fs.writeFile(
+          checkpointGraphPath,
+          JSON.stringify({ nodes: result.nodes, edges: result.edges }),
+          'utf-8',
+        );
+      });
 
     return result;
   }
@@ -315,7 +329,7 @@ export class AnalysisPipeline {
   ): Promise<void> {
     await this.prisma.analysisJob.update({
       where: { id: analysisJobId },
-      data: { checkpoint: checkpoint as object },
+      data: { checkpoint: toPrismaJson(checkpoint) },
     });
   }
 

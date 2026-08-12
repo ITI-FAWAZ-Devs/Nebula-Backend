@@ -225,7 +225,9 @@ export class AiProviderService {
     let providersToUse = this.embeddingProviders;
     if (options?.overrideProvider) {
       const targetName = options.overrideProvider.toLowerCase();
-      const matched = this.embeddingProviders.filter((p) => p.name === targetName);
+      const matched = this.embeddingProviders.filter(
+        (p) => p.name === targetName,
+      );
       if (matched.length > 0) {
         providersToUse = matched;
       }

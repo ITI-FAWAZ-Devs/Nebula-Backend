@@ -6,7 +6,10 @@ import {
   Content,
   FunctionDeclarationsTool,
 } from '@google/generative-ai';
-import { buildFileDescriptionPrompt, buildAnswerQuestionPrompt } from './prompts';
+import {
+  buildFileDescriptionPrompt,
+  buildAnswerQuestionPrompt,
+} from './prompts';
 
 export interface GeminiFunctionCall {
   name: string;
@@ -188,7 +191,9 @@ export class GeminiService {
 
       return { text, functionCalls };
     } catch (error) {
-      this.logger.error(`Failed to generate with tools: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to generate with tools: ${(error as Error).message}`,
+      );
       throw error;
     }
   }
@@ -213,7 +218,9 @@ export class GeminiService {
         }
       }
     } catch (error) {
-      this.logger.error(`Failed to stream content: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to stream content: ${(error as Error).message}`,
+      );
       throw error;
     }
   }
@@ -239,14 +246,19 @@ export class GeminiService {
       `Query: ${query}`,
       '',
       'Candidates:',
-      ...candidates.map((c, i) => `${i + 1}. id="${c.id}"\n${c.content.slice(0, 500)}`),
+      ...candidates.map(
+        (c, i) => `${i + 1}. id="${c.id}"\n${c.content.slice(0, 500)}`,
+      ),
     ].join('\n');
 
     try {
       const result = await this.llmModelInstance.generateContent(prompt);
       const responseText = result.response.text().trim();
       const jsonText = this.extractJsonArray(responseText);
-      const parsed = JSON.parse(jsonText) as Array<{ id: string; score: number }>;
+      const parsed = JSON.parse(jsonText) as Array<{
+        id: string;
+        score: number;
+      }>;
 
       const byId = new Map(parsed.map((p) => [p.id, p.score]));
       return candidates.map((c) => ({

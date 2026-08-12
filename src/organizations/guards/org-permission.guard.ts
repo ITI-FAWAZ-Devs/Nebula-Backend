@@ -40,13 +40,13 @@ export class OrgPermissionGuard implements CanActivate {
       );
     }
 
-    const permissions =
-      await this.organizationsService.getMemberPermissions(userId, orgId);
+    const permissions = await this.organizationsService.getMemberPermissions(
+      userId,
+      orgId,
+    );
 
     if (!permissions) {
-      throw new ForbiddenException(
-        'You are not a member of this organization',
-      );
+      throw new ForbiddenException('You are not a member of this organization');
     }
 
     // Support both new dotted permissions and legacy colon-based strings

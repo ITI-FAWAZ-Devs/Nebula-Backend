@@ -76,6 +76,12 @@ export class OrganizationsController {
   @Get()
   async listOrganizations(@CurrentUser('id') userId: string) {
     const orgs = await this.organizationsService.listUserOrganizations(userId);
+    return {
+      success: true,
+      message: 'Organizations retrieved successfully',
+      data: orgs,
+    };
+    const orgs = await this.organizationsService.listUserOrganizations(userId);
     return { success: true, message: 'Organizations retrieved successfully', data: orgs };
   }
 
@@ -84,6 +90,12 @@ export class OrganizationsController {
     @CurrentUser('id') userId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
+    const org = await this.organizationsService.getOrganization(id, userId);
+    return {
+      success: true,
+      message: 'Organization retrieved successfully',
+      data: org,
+    };
     const org = await this.organizationsService.getOrganization(id, userId);
     return { success: true, message: 'Organization retrieved successfully', data: org };
   }
@@ -148,6 +160,8 @@ export class OrganizationsController {
 
   @Delete(':id/roles/:roleId')
   @UseGuards(OrgPermissionGuard)
+  @RequirePermission(Permission.ORG_MANAGE)
+  async deleteRole(@Param('roleId', ParseUUIDPipe) roleId: string) {
   @RequirePermission(Permission.ORG_MANAGE_ROLES)
   async deleteRole(@Param('roleId', ParseUUIDPipe) roleId: string) {
     const result = await this.organizationsService.deleteRole(roleId);
@@ -200,6 +214,7 @@ export class OrganizationsController {
     @CurrentUser('id') userId: string,
     @Param('token') token: string,
   ) {
+    const member = await this.organizationsService.acceptInvite(token, userId);
     const member = await this.organizationsService.acceptInvite(token, userId);
     return {
       success: true,

@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 
 export interface PipelineCheckpoint {
   completedStages: string[];
@@ -11,6 +12,12 @@ export const MAX_RESUME_COUNT = 5;
 
 export function emptyCheckpoint(): PipelineCheckpoint {
   return { completedStages: [], artifacts: {} };
+}
+
+export function toPrismaJson(
+  checkpoint: PipelineCheckpoint,
+): Prisma.InputJsonValue {
+  return checkpoint as unknown as Prisma.InputJsonValue;
 }
 
 export function hasStage(
@@ -35,9 +42,7 @@ export function markStage(
   };
 }
 
-export function fromPrismaJson(
-  raw: unknown,
-): PipelineCheckpoint {
+export function fromPrismaJson(raw: unknown): PipelineCheckpoint {
   if (
     raw &&
     typeof raw === 'object' &&
@@ -59,10 +64,7 @@ export function fromPrismaJson(
   return emptyCheckpoint();
 }
 
-export function checkpointDirFor(
-  workspaceRoot: string,
-  jobId: string,
-): string {
+export function checkpointDirFor(workspaceRoot: string, jobId: string): string {
   return path.join(workspaceRoot, 'checkpoints', jobId);
 }
 

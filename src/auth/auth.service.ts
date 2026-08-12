@@ -471,6 +471,7 @@ export class AuthService {
         isEmailVerified: user.isEmailVerified,
         defaultWorkspaceType: (user as any).defaultWorkspaceType ?? 'PERSONAL',
         defaultOrganizationId: (user as any).defaultOrganizationId ?? null,
+        role: user.role,
       },
     };
   }

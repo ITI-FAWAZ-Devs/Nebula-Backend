@@ -34,6 +34,11 @@ export class RepositoriesService {
           dto.organizationId,
         );
       if (!permissions || !permissions.includes('repo.process')) {
+      const permissions = await this.organizationsService.getMemberPermissions(
+        userId,
+        dto.organizationId,
+      );
+      if (!permissions || !permissions.includes('repo:import')) {
         throw new ForbiddenException(
           'You do not have permission to import repositories in this organization',
         );
@@ -355,6 +360,11 @@ export class RepositoriesService {
         !permissions ||
         !permissions.includes('repo.delete')
       ) {
+      const permissions = await this.organizationsService.getMemberPermissions(
+        userId,
+        repo.organizationId,
+      );
+      if (!permissions) {
         throw new ForbiddenException(
           'You do not have permission to delete repositories in this organization',
         );
@@ -370,4 +380,3 @@ export class RepositoriesService {
     return { id };
   }
 }
-

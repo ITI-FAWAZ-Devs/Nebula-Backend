@@ -62,7 +62,8 @@ export class ChromaService {
   /**
    * Deletes a collection and all its contents if it exists.
    */
-  async deleteCollection(collectionName: string) {    try {
+  async deleteCollection(collectionName: string) {
+    try {
       this.logger.log(`Deleting Chroma collection: ${collectionName}`);
       await this.client.deleteCollection({
         name: collectionName,
@@ -114,7 +115,10 @@ export class ChromaService {
         continue;
       }
 
-      if (currentBatchSize + chunkSize > MAX_BATCH_BYTES && currentBatch.length > 0) {
+      if (
+        currentBatchSize + chunkSize > MAX_BATCH_BYTES &&
+        currentBatch.length > 0
+      ) {
         batches.push(currentBatch);
         currentBatch = [];
         currentBatchSize = 0;
@@ -175,10 +179,8 @@ export class ChromaService {
       const result = await collection.query({
         queryEmbeddings: [queryEmbedding],
         nResults: limit,
-        ...(where && Object.keys(where).length > 0
-          ? { where: where as Record<string, string | number | boolean> }
-          : {}),
-      } as Parameters<typeof collection.query>[0]);
+        ...(where && Object.keys(where).length > 0 ? { where: where } : {}),
+      });
 
       return result;
     } catch (error) {

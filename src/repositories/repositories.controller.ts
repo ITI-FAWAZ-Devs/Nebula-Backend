@@ -150,7 +150,10 @@ export class RepositoriesController {
     @CurrentUser('id') userId: string,
     @Query('organizationId') organizationId?: string,
   ) {
-    const repos = await this.repositoriesService.listImported(userId, organizationId);
+    const repos = await this.repositoriesService.listImported(
+      userId,
+      organizationId,
+    );
     return {
       success: true,
       message: 'Imported repositories retrieved successfully',
