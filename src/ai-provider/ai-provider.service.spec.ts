@@ -173,10 +173,12 @@ describe('AiProviderService', () => {
   });
 
   describe('embedMany', () => {
+    const dummyVector = new Array(768).fill(0.1);
+
     it('should embed via gemini by default', async () => {
       mockGeminiEmbedding.embedMany.mockResolvedValue([
-        [0.1, 0.2],
-        [0.3, 0.4],
+        dummyVector,
+        dummyVector,
       ]);
 
       const result = await service.embedMany(['a', 'b']);
@@ -190,14 +192,14 @@ describe('AiProviderService', () => {
       expect(result.model).toBe('gemini-embed-model');
       expect(result.dimensions).toBe(768);
       expect(result.embeddings).toEqual([
-        [0.1, 0.2],
-        [0.3, 0.4],
+        dummyVector,
+        dummyVector,
       ]);
       expect(result.fallbackOccurred).toBe(false);
     });
 
     it('should forward the search_query input type', async () => {
-      mockGeminiEmbedding.embedMany.mockResolvedValue([[0.9, 0.8]]);
+      mockGeminiEmbedding.embedMany.mockResolvedValue([dummyVector]);
 
       const result = await service.embedMany(['q'], 'search_query');
 
@@ -220,7 +222,7 @@ describe('AiProviderService', () => {
       openrouterKey = 'or-key';
       embeddingOrderOverride = 'openrouter,gemini';
       service = await buildService();
-      mockOpenRouterEmbedding.embedMany.mockResolvedValue([[0.7, 0.8]]);
+      mockOpenRouterEmbedding.embedMany.mockResolvedValue([dummyVector]);
 
       const result = await service.embedMany(['a']);
 
@@ -239,8 +241,10 @@ describe('AiProviderService', () => {
   });
 
   describe('embedString', () => {
+    const dummyVector = new Array(768).fill(0.1);
+
     it('should return a single embedding result using search_query', async () => {
-      mockGeminiEmbedding.embedMany.mockResolvedValue([[0.1, 0.2]]);
+      mockGeminiEmbedding.embedMany.mockResolvedValue([dummyVector]);
 
       const result = await service.embedString('hello');
 
@@ -249,7 +253,7 @@ describe('AiProviderService', () => {
         'search_query',
         expect.anything(),
       );
-      expect(result.embedding).toEqual([0.1, 0.2]);
+      expect(result.embedding).toEqual(dummyVector);
       expect(result.provider).toBe('gemini');
       expect(result.dimensions).toBe(768);
     });

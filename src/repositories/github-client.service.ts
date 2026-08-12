@@ -1,13 +1,7 @@
-import {
-  Injectable,
-  BadRequestException,
-  UnauthorizedException,
-  NotFoundException,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
-import { AuthProvider } from '@prisma/client';
-import { UsersService } from '../users/users.service';
+import { Injectable, BadRequestException } from '@nestjs/common';
+import { ConnectionProvider } from '@prisma/client';
+import { ConnectionsService } from '../connections/connections.service';
+import { GithubAdapter } from '../connections/adapters/github.adapter';
 
 export interface GitHubRepoDetails {
   githubRepoId: string;
@@ -20,35 +14,22 @@ export interface GitHubRepoDetails {
 
 @Injectable()
 export class GithubClientService {
-  // In-memory cache for listing repositories: userId -> { data, timestamp }
   private readonly cache = new Map<
     string,
     { data: GitHubRepoDetails[]; timestamp: number }
   >();
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
+  private readonly CACHE_TTL = 5 * 60 * 1000;
 
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly connectionsService: ConnectionsService,
+    private readonly githubAdapter: GithubAdapter,
+  ) {}
 
-  /**
-   * Fetches all repositories (public and private) for the authenticated user from GitHub.
-   * Leverages internal pagination to fetch all pages, and caches the results.
-   */
   async getRepositories(
     userId: string,
     forceRefresh = false,
+    connectionId?: string,
   ): Promise<GitHubRepoDetails[]> {
-    // 1. Fetch user's GitHub account and token
-    const account = await this.usersService.findAccountByUserAndProvider(
-      userId,
-      AuthProvider.GITHUB,
-    );
-    if (!account || !account.accessToken) {
-      throw new BadRequestException(
-        'GitHub account not linked. Please connect your GitHub account.',
-      );
-    }
-
-    // 2. Check cache if not forcing refresh
     if (!forceRefresh) {
       const cached = this.cache.get(userId);
       if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
@@ -56,142 +37,49 @@ export class GithubClientService {
       }
     }
 
-    const accessToken = account.accessToken;
-    const allRepos: GitHubRepoDetails[] = [];
-    let page = 1;
-    const perPage = 100; // GitHub API maximum limit per page
-    let hasNextPage = true;
+    const remoteRepos = await this.connectionsService.fetchRemoteRepositories(
+      userId,
+      connectionId,
+      ConnectionProvider.GITHUB,
+    );
 
-    // 3. Loop through pages to retrieve all repositories
-    while (hasNextPage) {
-      const response = await fetch(
-        `https://api.github.com/user/repos?per_page=${perPage}&page=${page}`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            Accept: 'application/vnd.github+json',
-            'User-Agent': 'Nebula-Backend',
-          },
-        },
-      );
+    const mapped: GitHubRepoDetails[] = remoteRepos.map((repo) => ({
+      githubRepoId: repo.providerRepoId,
+      name: repo.name,
+      owner: repo.owner,
+      defaultBranch: repo.defaultBranch,
+      isPrivate: repo.isPrivate,
+      cloneUrl: repo.cloneUrl,
+    }));
 
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        const errorMessage =
-          errorBody?.message || 'Failed to fetch repositories from GitHub';
-
-        if (response.status === 401) {
-          throw new UnauthorizedException(
-            'GitHub OAuth token has expired or is invalid. Please reconnect your account.',
-          );
-        }
-
-        throw new HttpException(
-          `GitHub API error: ${errorMessage}`,
-          response.status || HttpStatus.BAD_GATEWAY,
-        );
-      }
-
-      const reposData = (await response.json()) as any[];
-      if (!Array.isArray(reposData)) {
-        break;
-      }
-
-      // Map raw GitHub repositories to details interface
-      const mappedPage = reposData.map((repo) => ({
-        githubRepoId: String(repo.id),
-        name: repo.name,
-        owner: repo.owner.login,
-        defaultBranch: repo.default_branch || 'main',
-        isPrivate: repo.private === true,
-        cloneUrl: repo.clone_url,
-      }));
-
-      allRepos.push(...mappedPage);
-
-      // Determine if there is a next page using Link header or page array length
-      const linkHeader = response.headers.get('link');
-      const hasNextLink = linkHeader
-        ? linkHeader.includes('rel="next"')
-        : false;
-
-      if (hasNextLink && reposData.length === perPage) {
-        page++;
-      } else {
-        hasNextPage = false;
-      }
-    }
-
-    // 4. Update Cache
-    this.cache.set(userId, {
-      data: allRepos,
-      timestamp: Date.now(),
-    });
-
-    return allRepos;
+    this.cache.set(userId, { data: mapped, timestamp: Date.now() });
+    return mapped;
   }
 
-  /**
-   * Fetches the current head commit SHA of a repository's default branch, live from GitHub.
-   */
   async getLatestCommitSha(
     userId: string,
     owner: string,
     repo: string,
     branch: string,
+    connectionId?: string,
   ): Promise<string> {
-    const account = await this.usersService.findAccountByUserAndProvider(
-      userId,
-      AuthProvider.GITHUB,
+    const conn = connectionId
+      ? await this.connectionsService.getConnectionById(connectionId, userId)
+      : await this.connectionsService.findDefaultUserConnection(
+          userId,
+          ConnectionProvider.GITHUB,
+        );
+
+    if (!conn) {
+      throw new BadRequestException('No active GitHub connection found.');
+    }
+
+    const rawToken = await this.connectionsService.getDecryptedToken(conn.id);
+    return this.githubAdapter.getLatestCommitSha(
+      rawToken,
+      owner,
+      repo,
+      branch,
     );
-    if (!account || !account.accessToken) {
-      throw new BadRequestException(
-        'GitHub account not linked. Please connect your GitHub account.',
-      );
-    }
-
-    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(branch)}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${account.accessToken}`,
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'Nebula-Backend',
-      },
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      const errorMessage =
-        errorBody?.message || 'Failed to fetch latest commit from GitHub';
-
-      if (response.status === 401) {
-        throw new UnauthorizedException(
-          'GitHub OAuth token has expired or is invalid. Please reconnect your account.',
-        );
-      }
-
-      if (response.status === 404) {
-        throw new NotFoundException(
-          `Repository ${owner}/${repo} or branch ${branch} not found on GitHub`,
-        );
-      }
-
-      throw new HttpException(
-        `GitHub API error: ${errorMessage}`,
-        response.status || HttpStatus.BAD_GATEWAY,
-      );
-    }
-
-    const commit = (await response.json()) as { sha?: string };
-    if (!commit.sha) {
-      throw new HttpException(
-        'GitHub API returned no commit SHA',
-        HttpStatus.BAD_GATEWAY,
-      );
-    }
-
-    return commit.sha;
   }
 }

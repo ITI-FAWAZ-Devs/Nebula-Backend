@@ -4,6 +4,7 @@ import { DocStatus, RepositoryStatus } from '@prisma/client';
 import { RepositoriesService } from './repositories.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { ConnectionsService } from '../connections/connections.service';
 
 describe('RepositoriesService', () => {
   let service: RepositoriesService;
@@ -26,6 +27,15 @@ describe('RepositoriesService', () => {
     },
   };
 
+  const mockConnectionsService = {
+    findDefaultUserConnection: jest.fn(),
+    findDefaultOrgConnection: jest.fn(),
+    resolveTokenForRepo: jest.fn(),
+    fetchRepoMetadata: jest.fn(),
+    getConnectionById: jest.fn(),
+    getDecryptedToken: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -37,6 +47,10 @@ describe('RepositoriesService', () => {
         {
           provide: OrganizationsService,
           useValue: mockOrganizationsService,
+        },
+        {
+          provide: ConnectionsService,
+          useValue: mockConnectionsService,
         },
       ],
     }).compile();
@@ -63,8 +77,15 @@ describe('RepositoriesService', () => {
       cloneUrl: 'https://github.com/test-owner/test-repo.git',
     };
 
+    beforeEach(() => {
+      // findDefaultUserConnection returns null (no connection) by default in these tests
+      mockConnectionsService.findDefaultUserConnection.mockResolvedValue(null);
+      mockConnectionsService.findDefaultOrgConnection.mockResolvedValue(null);
+      mockConnectionsService.resolveTokenForRepo.mockResolvedValue(null);
+    });
+
     it('should successfully import a repository if it does not exist', async () => {
-      mockPrisma.repository.findUnique.mockResolvedValue(null);
+      mockPrisma.repository.findFirst.mockResolvedValue(null);
       mockPrisma.repository.create.mockResolvedValue({
         id: 'uuid-123',
         userId: 'user-123',
@@ -76,12 +97,12 @@ describe('RepositoriesService', () => {
 
       expect(result).toBeDefined();
       expect(result.id).toBe('uuid-123');
-      expect(mockPrisma.repository.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.repository.findFirst).toHaveBeenCalledTimes(1);
       expect(mockPrisma.repository.create).toHaveBeenCalledTimes(1);
     });
 
     it('should throw ConflictException if the repository is already imported (app-level check)', async () => {
-      mockPrisma.repository.findUnique.mockResolvedValue({ id: 'existing-id' });
+      mockPrisma.repository.findFirst.mockResolvedValue({ id: 'existing-id' });
 
       await expect(service.importRepository('user-123', dto)).rejects.toThrow(
         ConflictException,
@@ -90,7 +111,7 @@ describe('RepositoriesService', () => {
     });
 
     it('should throw ConflictException if DB unique constraint is violated (P2002 error code)', async () => {
-      mockPrisma.repository.findUnique.mockResolvedValue(null);
+      mockPrisma.repository.findFirst.mockResolvedValue(null);
       const prismaError = new Error('Unique constraint failed');
       (prismaError as any).code = 'P2002';
       mockPrisma.repository.create.mockRejectedValue(prismaError);
@@ -101,15 +122,73 @@ describe('RepositoriesService', () => {
     });
   });
 
+  describe('importFromUrl', () => {
+    const urlDto = {
+      url: 'https://github.com/facebook/react',
+    };
+
+    beforeEach(() => {
+      mockConnectionsService.resolveTokenForRepo.mockResolvedValue(null);
+      mockConnectionsService.findDefaultUserConnection.mockResolvedValue(null);
+      mockConnectionsService.findDefaultOrgConnection.mockResolvedValue(null);
+    });
+
+    it('should successfully import a public repository from URL without token', async () => {
+      mockConnectionsService.fetchRepoMetadata.mockResolvedValue({
+        providerRepoId: '10270250',
+        name: 'react',
+        owner: 'facebook',
+        defaultBranch: 'main',
+        isPrivate: false,
+        cloneUrl: 'https://github.com/facebook/react.git',
+      });
+      mockPrisma.repository.findFirst.mockResolvedValue(null);
+      mockPrisma.repository.create.mockResolvedValue({
+        id: 'uuid-public-1',
+        userId: 'user-123',
+        name: 'react',
+        owner: 'facebook',
+        status: RepositoryStatus.IMPORTED,
+      });
+
+      const result = await service.importFromUrl('user-123', urlDto);
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe('uuid-public-1');
+      expect(mockConnectionsService.fetchRepoMetadata).toHaveBeenCalledWith(
+        'facebook',
+        'react',
+        null,
+        'GITHUB',
+      );
+    });
+
+    it('should throw BadRequestException when trying to import a private repo without a token', async () => {
+      mockConnectionsService.fetchRepoMetadata.mockResolvedValue({
+        providerRepoId: '10270250',
+        name: 'secret-repo',
+        owner: 'facebook',
+        defaultBranch: 'main',
+        isPrivate: true,
+        cloneUrl: 'https://github.com/facebook/secret-repo.git',
+      });
+      mockConnectionsService.resolveTokenForRepo.mockRejectedValue(
+        new Error('No connection'),
+      );
+
+      await expect(service.importFromUrl('user-123', urlDto)).rejects.toThrow();
+    });
+  });
+
   describe('listImported', () => {
-    it('should return a list of imported repositories', async () => {
+    it('should return a list of imported repositories (personal, organizationId null)', async () => {
       const mockList = [{ id: '1' }, { id: '2' }];
       mockPrisma.repository.findMany.mockResolvedValue(mockList);
 
       const result = await service.listImported('user-123');
       expect(result).toEqual(mockList);
       expect(mockPrisma.repository.findMany).toHaveBeenCalledWith({
-        where: { userId: 'user-123' },
+        where: { userId: 'user-123', organizationId: null },
         orderBy: { createdAt: 'desc' },
       });
     });
@@ -117,15 +196,15 @@ describe('RepositoriesService', () => {
 
   describe('getImportedById', () => {
     it('should return repository details if found and owner matches', async () => {
-      const mockRepo = { id: 'repo-123', userId: 'user-123', name: 'test' };
-      mockPrisma.repository.findFirst.mockResolvedValue(mockRepo);
+      const mockRepo = { id: 'repo-123', userId: 'user-123', name: 'test', organizationId: null };
+      mockPrisma.repository.findUnique.mockResolvedValue(mockRepo);
 
       const result = await service.getImportedById('user-123', 'repo-123');
       expect(result).toEqual(mockRepo);
     });
 
-    it('should throw NotFoundException if repository not found or not owned', async () => {
-      mockPrisma.repository.findFirst.mockResolvedValue(null);
+    it('should throw NotFoundException if repository not found', async () => {
+      mockPrisma.repository.findUnique.mockResolvedValue(null);
 
       await expect(
         service.getImportedById('user-123', 'repo-123'),
@@ -135,8 +214,8 @@ describe('RepositoriesService', () => {
 
   describe('deleteImported', () => {
     it('should delete and return id if repository exists', async () => {
-      const mockRepo = { id: 'repo-123', userId: 'user-123' };
-      mockPrisma.repository.findFirst.mockResolvedValue(mockRepo);
+      const mockRepo = { id: 'repo-123', userId: 'user-123', organizationId: null };
+      mockPrisma.repository.findUnique.mockResolvedValue(mockRepo);
       mockPrisma.repository.delete.mockResolvedValue(mockRepo);
 
       const result = await service.deleteImported('user-123', 'repo-123');
@@ -147,7 +226,7 @@ describe('RepositoriesService', () => {
     });
 
     it('should throw NotFoundException if repository to delete is not found', async () => {
-      mockPrisma.repository.findFirst.mockResolvedValue(null);
+      mockPrisma.repository.findUnique.mockResolvedValue(null);
 
       await expect(
         service.deleteImported('user-123', 'repo-123'),

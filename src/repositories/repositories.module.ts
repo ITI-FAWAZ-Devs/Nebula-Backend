@@ -14,6 +14,7 @@ import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { ChromaModule } from '../chroma/chroma.module';
 import { ProgressModule } from '../progress/progress.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
+import { ConnectionsModule } from '../connections/connections.module';
 import { DocumentationPipeline } from './documentation.pipeline';
 import { DocumentationProcessor } from './documentation.processor';
 import { StaleJobRecoveryService } from './stale-job-recovery.service';
@@ -38,6 +39,7 @@ import { ARCHITECTURE_DRAFT_QUEUE } from '../architecture-doc/architecture-doc.c
     ChromaModule,
     ProgressModule,
     SubscriptionModule,
+    ConnectionsModule,
   ],
   controllers: [RepositoriesController],
   providers: [

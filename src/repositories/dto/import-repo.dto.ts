@@ -1,9 +1,13 @@
 import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUrl, IsUUID } from 'class-validator';
 
 export class ImportRepoDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  githubRepoId: string;
+  githubRepoId?: string;
+
+  @IsOptional()
+  @IsString()
+  providerRepoId?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -27,5 +31,9 @@ export class ImportRepoDto {
   @IsOptional()
   @IsUUID()
   organizationId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  connectionId?: string;
 }
 

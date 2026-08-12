@@ -14,11 +14,12 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { RequireGithubToken } from '../integrations/decorators/require-github-token.decorator';
+import { RequireConnection } from '../connections/decorators/require-connection.decorator';
 import { RepositoriesService } from './repositories.service';
 import { GithubClientService } from './github-client.service';
 import { AnalysisService } from '../analysis/analysis.service';
 import { ImportRepoDto } from './dto/import-repo.dto';
+import { ImportFromUrlDto } from './dto/import-url.dto';
 import { GithubRepoQueryDto } from './dto/github-repo-query.dto';
 import { AskService } from './ask.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
@@ -50,7 +51,7 @@ export class RepositoriesController {
    * Lists the user's GitHub repositories (fetched live from GitHub, with caching and pagination).
    */
   @Get('github')
-  @RequireGithubToken()
+  @RequireConnection()
   async listGithubRepos(
     @CurrentUser('id') userId: string,
     @Query() query: GithubRepoQueryDto,
@@ -94,14 +95,34 @@ export class RepositoriesController {
   /**
    * POST /repositories/import
    * Imports a selected GitHub repository into the database.
+   * Connection is optional for public repositories.
    */
   @Post('import')
-  @RequireGithubToken()
   async importRepo(
     @CurrentUser('id') userId: string,
     @Body() dto: ImportRepoDto,
   ) {
     const importedRepo = await this.repositoriesService.importRepository(
+      userId,
+      dto,
+    );
+    return {
+      success: true,
+      message: 'Repository imported successfully',
+      data: importedRepo,
+    };
+  }
+
+  /**
+   * POST /repositories/import-url
+   * Imports a public or private repository by URL or owner/repo shorthand.
+   */
+  @Post('import-url')
+  async importRepoFromUrl(
+    @CurrentUser('id') userId: string,
+    @Body() dto: ImportFromUrlDto,
+  ) {
+    const importedRepo = await this.repositoriesService.importFromUrl(
       userId,
       dto,
     );

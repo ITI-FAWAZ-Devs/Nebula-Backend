@@ -52,11 +52,13 @@ export class OrganizationsService {
           permissions: [
             'repo:read',
             'repo:import',
+            'repo:delete',
             'docs:read',
             'docs:write',
             'task:read',
             'task:write',
             'member:invite',
+            'connection:manage',
           ],
         },
       });
