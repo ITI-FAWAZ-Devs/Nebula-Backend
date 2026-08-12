@@ -11,6 +11,7 @@ import { ArchitectureDocService } from './architecture-doc.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProgressEventsService } from '../progress/progress-events.service';
 import { GithubClientService } from '../repositories/github-client.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import { ARCHITECTURE_DRAFT_QUEUE } from './architecture-doc.constants';
 
 describe('ArchitectureDocService', () => {
@@ -76,6 +77,10 @@ describe('ArchitectureDocService', () => {
         },
         { provide: ProgressEventsService, useValue: mockProgress },
         { provide: GithubClientService, useValue: mockGithubClient },
+        {
+          provide: SubscriptionService,
+          useValue: { checkAndIncrementQuota: jest.fn().mockResolvedValue({}) },
+        },
       ],
     }).compile();
 

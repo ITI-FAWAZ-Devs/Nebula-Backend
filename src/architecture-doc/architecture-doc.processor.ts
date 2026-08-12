@@ -252,7 +252,8 @@ export class ArchitectureDocProcessor extends WorkerHost {
     await this.mailService.sendJobCompletedEmail({
       email: repository.user.email,
       fullName: repository.user.fullName ?? undefined,
-      repositoryName: repository.name,
+      repositoryName: `${repository.owner}/${repository.name}`,
+      repositoryId,
       pipeline,
     });
   }
