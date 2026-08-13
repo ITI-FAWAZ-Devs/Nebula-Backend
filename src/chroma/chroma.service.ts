@@ -161,6 +161,43 @@ export class ChromaService {
   }
 
   /**
+   * Deletes every collection whose name starts with the given prefix
+   * (e.g. `repo-<id>` and any `repo-<id>-quarantine-...` collections).
+   * Best-effort: failures are logged and swallowed so callers can clean up
+   * other repository artifacts without being blocked by Chroma outages.
+   */
+  async deleteCollectionsByPrefix(prefix: string): Promise<void> {
+    try {
+      const total = await this.client.countCollections();
+      const names: string[] = [];
+      const PAGE_SIZE = 100;
+
+      for (let offset = 0; offset < total; offset += PAGE_SIZE) {
+        const page = await this.client.listCollections({
+          limit: PAGE_SIZE,
+          offset,
+        });
+        names.push(...page.map((collection) => collection.name));
+      }
+
+      const matching = names.filter((name) => name.startsWith(prefix));
+      for (const name of matching) {
+        await this.deleteCollection(name);
+      }
+
+      if (matching.length > 0) {
+        this.logger.log(
+          `Deleted ${matching.length} Chroma collection(s) with prefix "${prefix}"`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to delete collections by prefix ${prefix}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
    * Performs a similarity query (top-K results) in the collection using the query embedding.
    * `where` narrows scope by metadata (e.g. filePath, language, repositoryId) instead of
    * relying purely on raw top-k similarity.

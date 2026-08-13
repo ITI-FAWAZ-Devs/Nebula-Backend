@@ -428,6 +428,25 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Deletes every node (and relationship) belonging to a repository.
+   * Reuses the same `repositoryId` scoping used by `saveGraph`'s wipe step so
+   * cleanup is consistent with the delete-and-replace invariant.
+   * Throws when the driver is not initialized or the query fails.
+   */
+  async deleteGraph(repositoryId: string): Promise<void> {
+    const session = this.getSession();
+    try {
+      await session.run(
+        `MATCH (n {repositoryId: $repositoryId}) DETACH DELETE n`,
+        { repositoryId },
+      );
+      this.logger.log(`Deleted Neo4j graph for repository ${repositoryId}`);
+    } finally {
+      await session.close();
+    }
+  }
+
   // ---------------------------------------------------------------------
   // Frozen agent graph tools (Phase 0 contract). All Cypher is parameterized
   // and written here — never templated from LLM output.
