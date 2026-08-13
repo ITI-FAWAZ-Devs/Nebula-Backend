@@ -27,7 +27,7 @@ function dedupeRelationships(
 
 /** Picks a backtick fence longer than any backtick run already in the content, so embedded ``` sequences can't break out of the code block. */
 function safeFence(content: string): string {
-  const runs = content.match(/`+/g) || [];
+  const runs = (content.match(/`+/g) || []) as string[];
   const maxRun = runs.reduce((max, r) => Math.max(max, r.length), 0);
   return '`'.repeat(Math.max(3, maxRun + 1));
 }

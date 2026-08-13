@@ -1,7 +1,7 @@
 import { registerAs } from '@nestjs/config';
 
 export default registerAs('voice', () => ({
-  enabled: process.env.VOICE_ENABLED !== 'false',
+  enabled: process.env.VOICE_ENABLED === 'true',
   whisperBin: process.env.VOICE_WHISPER_BIN || 'whisper-cpp',
   whisperModel: process.env.VOICE_WHISPER_MODEL || 'models/ggml-base.en.bin',
   piperBin: process.env.VOICE_PIPER_BIN || 'piper',
