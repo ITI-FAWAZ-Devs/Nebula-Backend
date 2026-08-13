@@ -129,6 +129,9 @@ export class DocumentationPipeline {
           cloneUrl: repository.cloneUrl,
           destPath: workspace.repositoryPath,
           branch: repository.defaultBranch,
+          orgId: (repository as any).organizationId ?? null,
+          connectionId: (repository as any).connectionId ?? null,
+          isPrivate: (repository as any).isPrivate ?? false,
         });
 
         localPath = cloneResult.localPath;

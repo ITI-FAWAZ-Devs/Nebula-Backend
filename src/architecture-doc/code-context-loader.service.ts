@@ -40,6 +40,9 @@ export class CodeContextLoaderService {
         cloneUrl: true,
         defaultBranch: true,
         localPath: true,
+        organizationId: true,
+        connectionId: true,
+        isPrivate: true,
       },
     });
 
@@ -81,6 +84,9 @@ export class CodeContextLoaderService {
         cloneUrl: repository.cloneUrl,
         destPath,
         branch: repository.defaultBranch || 'main',
+        orgId: repository.organizationId ?? null,
+        connectionId: repository.connectionId ?? null,
+        isPrivate: repository.isPrivate ?? false,
       });
 
       await this.prisma.repository.update({
