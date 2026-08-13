@@ -5,13 +5,16 @@ import {
   Param,
   Query,
   Body,
+  Delete,
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AdminService } from './admin.service';
+import { AdminListUsersQueryDto } from './dto/admin-list-users-query.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 
 @Controller('admin')
@@ -21,24 +24,49 @@ export class AdminController {
 
   /**
    * GET /admin/users
-   * Lists all users with pagination and optional search.
+   * Lists all users with pagination, optional search and role filter.
    * ADMIN only.
    */
   @Get('users')
-  async listUsers(
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
-    @Query('search') search?: string,
-  ) {
-    const result = await this.adminService.listUsers({
-      page: page ? parseInt(page, 10) : undefined,
-      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-      search,
-    });
+  async listUsers(@Query() query: AdminListUsersQueryDto) {
+    const result = await this.adminService.listUsers(query);
     return {
       success: true,
       message: 'Users retrieved successfully',
       data: result,
+    };
+  }
+
+  /**
+   * GET /admin/users/:id
+   * Returns aggregated, non-sensitive details for a single user. ADMIN only.
+   */
+  @Get('users/:id')
+  async getUserById(@Param('id', ParseUUIDPipe) id: string) {
+    const user = await this.adminService.getUserById(id);
+    return {
+      success: true,
+      message: 'User retrieved successfully',
+      data: user,
+    };
+  }
+
+  /**
+   * DELETE /admin/users/:id
+   * Deletes a user account. Refuses when the user owns repositories or
+   * organizations, or when the target is the caller or the last admin.
+   * ADMIN only.
+   */
+  @Delete('users/:id')
+  @HttpCode(HttpStatus.OK)
+  async deleteUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') requestingAdminId: string,
+  ) {
+    await this.adminService.deleteUser(id, requestingAdminId);
+    return {
+      success: true,
+      message: 'User deleted successfully',
     };
   }
 

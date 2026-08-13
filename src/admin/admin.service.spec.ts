@@ -1,5 +1,5 @@
-import { NotFoundException } from '@nestjs/common';
-import { DocumentationJobStatus, UserRole } from '@prisma/client';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { AuthProvider, DocumentationJobStatus, UserRole } from '@prisma/client';
 import { AdminService } from './admin.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -12,8 +12,10 @@ describe('AdminService', () => {
       count: jest.Mock;
       findUnique: jest.Mock;
       update: jest.Mock;
+      delete: jest.Mock;
     };
     repository: { count: jest.Mock };
+    organization: { count: jest.Mock };
     generatedDoc: { count: jest.Mock };
     docSection: { count: jest.Mock };
     usageLog: { count: jest.Mock };
@@ -22,6 +24,20 @@ describe('AdminService', () => {
 
   const mockUserRow = {
     id: 'user-1',
+    email: 'user@example.com',
+    fullName: 'User One',
+    avatar: null,
+    role: UserRole.USER,
+    isEmailVerified: true,
+    subscriptionTier: 'FREE',
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-02'),
+    githubToken: null,
+    _count: { repositories: 2, usageLogs: 3, accounts: 1 },
+  };
+
+  const mockAdminRow = {
+    id: 'admin-1',
     email: 'admin@example.com',
     fullName: 'Admin',
     role: UserRole.ADMIN,
@@ -37,8 +53,10 @@ describe('AdminService', () => {
         count: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
+        delete: jest.fn(),
       },
       repository: { count: jest.fn() },
+      organization: { count: jest.fn() },
       generatedDoc: { count: jest.fn() },
       docSection: { count: jest.fn() },
       usageLog: { count: jest.fn() },
@@ -53,13 +71,28 @@ describe('AdminService', () => {
   });
 
   describe('listUsers', () => {
-    it('should return paginated users', async () => {
+    it('should return paginated users with safe summary fields', async () => {
       prisma.user.findMany.mockResolvedValue([mockUserRow]);
       prisma.user.count.mockResolvedValue(1);
 
       const result = await service.listUsers({ page: 1, pageSize: 20 });
 
-      expect(result.items).toEqual([mockUserRow]);
+      expect(result.items).toEqual([
+        {
+          id: 'user-1',
+          email: 'user@example.com',
+          fullName: 'User One',
+          avatar: null,
+          role: UserRole.USER,
+          isEmailVerified: true,
+          subscriptionTier: 'FREE',
+          githubConnected: true,
+          repositoriesCount: 2,
+          usageLogsCount: 3,
+          createdAt: mockUserRow.createdAt,
+          updatedAt: mockUserRow.updatedAt,
+        },
+      ]);
       expect(result.pagination).toEqual({
         page: 1,
         pageSize: 20,
@@ -69,6 +102,21 @@ describe('AdminService', () => {
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ skip: 0, take: 20 }),
       );
+    });
+
+    it('should mark githubConnected false when no github account or token', async () => {
+      prisma.user.findMany.mockResolvedValue([
+        {
+          ...mockUserRow,
+          githubToken: null,
+          _count: { repositories: 0, usageLogs: 0, accounts: 0 },
+        },
+      ]);
+      prisma.user.count.mockResolvedValue(1);
+
+      const result = await service.listUsers({ page: 1, pageSize: 20 });
+
+      expect(result.items[0].githubConnected).toBe(false);
     });
 
     it('should search by email or fullName when search is provided', async () => {
@@ -89,6 +137,19 @@ describe('AdminService', () => {
       );
     });
 
+    it('should filter by role when provided', async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.count.mockResolvedValue(0);
+
+      await service.listUsers({ role: UserRole.ADMIN });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { role: UserRole.ADMIN },
+        }),
+      );
+    });
+
     it('should clamp pageSize to 100', async () => {
       prisma.user.findMany.mockResolvedValue([]);
       prisma.user.count.mockResolvedValue(0);
@@ -98,6 +159,158 @@ describe('AdminService', () => {
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ take: 100 }),
       );
+    });
+  });
+
+  describe('getUserById', () => {
+    it('should return aggregated user details without sensitive fields', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...mockUserRow,
+        currentPeriodStart: new Date('2024-01-01'),
+        currentPeriodEnd: null,
+        totalGenerationsUsed: 10,
+        generationsUsedThisPeriod: 2,
+        githubToken: null,
+        accounts: [
+          {
+            provider: AuthProvider.GITHUB,
+            providerUsername: 'userone',
+            providerAvatar: 'https://avatar',
+            createdAt: new Date('2024-01-01'),
+          },
+        ],
+        usageLogs: [{ createdAt: new Date('2024-05-01') }],
+        _count: {
+          repositories: 2,
+          usageLogs: 3,
+          memberships: 1,
+          ownedOrganizations: 1,
+          accounts: 1,
+        },
+      });
+
+      const result = await service.getUserById('user-1');
+
+      expect(result.id).toBe('user-1');
+      expect(result.repositoriesCount).toBe(2);
+      expect(result.organizationsCount).toBe(1);
+      expect(result.ownedOrganizationsCount).toBe(1);
+      expect(result.lastUsageAt).toEqual(new Date('2024-05-01'));
+      expect(result.accounts).toEqual([
+        {
+          provider: AuthProvider.GITHUB,
+          providerUsername: 'userone',
+          providerAvatar: 'https://avatar',
+          createdAt: new Date('2024-01-01'),
+        },
+      ]);
+      expect(result).not.toHaveProperty('password');
+      expect(result).not.toHaveProperty('refreshToken');
+      expect(result).not.toHaveProperty('accessToken');
+    });
+
+    it('should throw NotFoundException when user does not exist', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.getUserById('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('deleteUser', () => {
+    it('should delete a user with no owned data', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        role: UserRole.USER,
+      });
+      prisma.repository.count.mockResolvedValue(0);
+      prisma.organization.count.mockResolvedValue(0);
+      prisma.user.delete.mockResolvedValue({ id: 'user-1' });
+
+      await expect(
+        service.deleteUser('user-1', 'admin-1'),
+      ).resolves.toBeUndefined();
+      expect(prisma.user.delete).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+      });
+    });
+
+    it('should throw NotFoundException when user does not exist', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.deleteUser('missing', 'admin-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+    });
+
+    it('should block self-deletion', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'admin-1',
+        role: UserRole.ADMIN,
+      });
+
+      await expect(service.deleteUser('admin-1', 'admin-1')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+    });
+
+    it('should block deleting the last admin', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'admin-1',
+        role: UserRole.ADMIN,
+      });
+      prisma.user.count.mockResolvedValue(0);
+
+      await expect(service.deleteUser('admin-1', 'admin-2')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+    });
+
+    it('should allow deleting an admin when other admins exist', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'admin-1',
+        role: UserRole.ADMIN,
+      });
+      prisma.user.count.mockResolvedValue(1);
+      prisma.repository.count.mockResolvedValue(0);
+      prisma.organization.count.mockResolvedValue(0);
+      prisma.user.delete.mockResolvedValue({ id: 'admin-1' });
+
+      await expect(
+        service.deleteUser('admin-1', 'admin-2'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should block deletion when the user owns repositories', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        role: UserRole.USER,
+      });
+      prisma.repository.count.mockResolvedValue(2);
+      prisma.organization.count.mockResolvedValue(0);
+
+      await expect(service.deleteUser('user-1', 'admin-1')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+    });
+
+    it('should block deletion when the user owns organizations', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        role: UserRole.USER,
+      });
+      prisma.repository.count.mockResolvedValue(0);
+      prisma.organization.count.mockResolvedValue(1);
+
+      await expect(service.deleteUser('user-1', 'admin-1')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
     });
   });
 
@@ -182,7 +395,7 @@ describe('AdminService', () => {
     it('should update the user role', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
       prisma.user.update.mockResolvedValue({
-        ...mockUserRow,
+        ...mockAdminRow,
         role: UserRole.ADMIN,
       });
 

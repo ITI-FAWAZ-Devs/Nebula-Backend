@@ -1342,7 +1342,7 @@
 		},
 		{
 			"name": "Admin",
-			"description": "Admin-only endpoints. Every request requires the caller to be an authenticated user with the `ADMIN` role.\n\n## Access Control\n- Authenticated **ADMIN** user → `200` OK\n- Authenticated **normal user** → `403` Forbidden\n- **Unauthenticated** request → `401` Unauthorized\n\n## Setup\n1. Log in with an admin account (see Auth - Public → Login)\n2. Use **List Users** → copy a user's `id` into the `userId` collection variable\n3. **Update User Role** to promote/demote users",
+			"description": "Admin-only endpoints. Every request requires the caller to be an authenticated user with the `ADMIN` role.\n\n## Access Control\n- Authenticated **ADMIN** user → `200` OK\n- Authenticated **normal user** → `403` Forbidden\n- **Unauthenticated** request → `401` Unauthorized\n\n## Setup\n1. Log in with an admin account (see Auth - Public → Login)\n2. Use **List Users** → copy a user's `id` into the `userId` collection variable\n3. Use **Get User Details**, **Update User Role**, **Delete User** to manage the account",
 			"item": [
 				{
 					"name": "List Users",
@@ -1379,11 +1379,18 @@
 								{
 									"key": "search",
 									"value": "",
-									"description": "Optional search term (matches email or full name)"
+									"description": "Optional search term (matches email or full name)",
+									"disabled": true
+								},
+								{
+									"key": "role",
+									"value": "",
+									"description": "Optional role filter. Exact uppercase enum value: USER or ADMIN (empty role= is rejected)",
+									"disabled": true
 								}
 							]
 						},
-						"description": "List all users with pagination and optional search. **ADMIN only.**\n\n**Query params:**\n- `page` (optional): Page number (default 1)\n- `pageSize` (optional): Items per page (default 20, max 100)\n- `search` (optional): Partial match on `email` or `fullName`\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"items\": [\n      {\n        \"id\": \"uuid\",\n        \"email\": \"user@example.com\",\n        \"fullName\": \"Jane Doe\",\n        \"role\": \"USER\",\n        \"subscriptionTier\": \"FREE\",\n        \"_count\": { \"repositories\": 2, \"usageLogs\": 5 }\n      }\n    ],\n    \"pagination\": {\n      \"page\": 1,\n      \"pageSize\": 20,\n      \"total\": 42,\n      \"totalPages\": 3\n    }\n  }\n}\n```\n\nCopy a user's `id` into the `userId` collection variable to use in **Update User Role**."
+						"description": "List all users with pagination and optional search. **ADMIN only.**\n\n**Query params:**\n- `page` (optional): Page number (default 1)\n- `pageSize` (optional): Items per page (default 20, max 100)\n- `search` (optional): Partial match on `email` or `fullName`\n- `role` (optional): Filter by role — exact uppercase enum value `USER` or `ADMIN`. An empty `role=` param is rejected by validation, so this param is disabled by default.\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"items\": [\n      {\n        \"id\": \"uuid\",\n        \"email\": \"user@example.com\",\n        \"fullName\": \"Jane Doe\",\n        \"role\": \"USER\",\n        \"isEmailVerified\": true,\n        \"subscriptionTier\": \"FREE\",\n        \"githubConnected\": true,\n        \"repositoriesCount\": 2,\n        \"usageLogsCount\": 5\n      }\n    ],\n    \"pagination\": {\n      \"page\": 1,\n      \"pageSize\": 20,\n      \"total\": 42,\n      \"totalPages\": 3\n    }\n  }\n}\n```\n\nCopy a user's `id` into the `userId` collection variable to use in **Get User Details**, **Update User Role**, and **Delete User**."
 					},
 					"response": [],
 					"event": [
@@ -1552,6 +1559,98 @@
 									"    pm.expect(json.success).to.be.true;",
 									"    pm.expect(json.data).to.have.property('role');",
 									"    pm.expect(json.data.role).to.be.oneOf(['USER', 'ADMIN']);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get User Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/users/{{userId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"users",
+								"{{userId}}"
+							]
+						},
+						"description": "Return aggregated details for a single user. **ADMIN only.**\n\nSet the `userId` collection variable to the target user's ID (from **List Users**).\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"uuid\",\n    \"email\": \"user@example.com\",\n    \"fullName\": \"Jane Doe\",\n    \"role\": \"USER\",\n    \"isEmailVerified\": true,\n    \"subscriptionTier\": \"FREE\",\n    \"githubConnected\": true,\n    \"repositoriesCount\": 2,\n    \"usageLogsCount\": 5,\n    \"totalGenerationsUsed\": 12,\n    \"generationsUsedThisPeriod\": 2,\n    \"organizationsCount\": 1,\n    \"ownedOrganizationsCount\": 0,\n    \"lastUsageAt\": \"2026-08-01T10:00:00.000Z\",\n    \"accounts\": [\n      {\n        \"provider\": \"GITHUB\",\n        \"providerUsername\": \"janedoe\"\n      }\n    ],\n    \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n    \"updatedAt\": \"2026-08-12T10:00:00.000Z\"\n  }\n}\n```\n\nReturns `404` if the user does not exist. Sensitive fields (`password`, refresh tokens, OAuth tokens) are never returned."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('User details retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('id');",
+									"    pm.expect(json.data).to.have.property('email');",
+									"});",
+									"",
+									"pm.test('Sensitive fields excluded', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data).to.not.have.property('password');",
+									"    pm.expect(json.data).to.not.have.property('refreshToken');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Delete User",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/users/{{userId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"users",
+								"{{userId}}"
+							]
+						},
+						"description": "Delete a user account. **ADMIN only.**\n\nPermanently removes the user and all records tied to their account (tokens, OAuth links, usage logs, memberships).\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"message\": \"User deleted successfully\"\n}\n```\n\n⚠️ Returns `409 Conflict` when the user owns imported repositories or organizations, when the target is the caller's own account, or when the target is the last remaining admin."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('User deleted (200) or blocked (409)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
 									"});"
 								]
 							}
