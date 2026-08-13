@@ -33,7 +33,7 @@ export class RepositoriesService {
           userId,
           dto.organizationId,
         );
-      if (!permissions || !permissions.includes('repo:import')) {
+      if (!permissions || !permissions.includes('repo.process')) {
         throw new ForbiddenException(
           'You do not have permission to import repositories in this organization',
         );
@@ -130,7 +130,7 @@ export class RepositoriesService {
           userId,
           dto.organizationId,
         );
-      if (!permissions || !permissions.includes('repo:import')) {
+      if (!permissions || !permissions.includes('repo.process')) {
         throw new ForbiddenException(
           'You do not have permission to import repositories in this organization',
         );
@@ -353,8 +353,7 @@ export class RepositoriesService {
         );
       if (
         !permissions ||
-        (!permissions.includes('repo:delete') &&
-          !permissions.includes('org:manage'))
+        !permissions.includes('repo.delete')
       ) {
         throw new ForbiddenException(
           'You do not have permission to delete repositories in this organization',

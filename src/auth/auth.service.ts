@@ -11,12 +11,14 @@ import * as argon2 from 'argon2';
 import { UsersService } from '../users/users.service';
 import { TokenService } from './token.service';
 import { MailService } from '../mail/mail.service';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { RegisterFromInviteDto } from './dto/register-from-invite.dto';
 import { ApiResponse } from '../common/interfaces/api-response.interface';
 
 @Injectable()
@@ -28,6 +30,7 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
+    private readonly organizationsService: OrganizationsService,
   ) { }
 
   // ── Register ──
@@ -39,12 +42,31 @@ export class AuthService {
     }
 
     const hashedPassword = await argon2.hash(dto.password);
+    const isOrgSignup = dto.accountType === 'organization';
 
     const user = await this.usersService.create({
       email: dto.email,
       password: hashedPassword,
       fullName: dto.fullName,
+      defaultWorkspaceType: isOrgSignup ? 'ORGANIZATION' : 'PERSONAL',
     });
+
+    // If org signup, create the organization and set it as default
+    if (isOrgSignup && dto.organizationName) {
+      try {
+        const org = await this.organizationsService.createOrganization(
+          user.id,
+          dto.organizationName,
+        );
+        await this.usersService.update(user.id, { defaultOrganizationId: org.id });
+      } catch (err) {
+        this.logger.error('Failed to create organization during registration', err);
+      }
+    }
+
+    // Resolve any pending email-only invitations for this email address
+    this.organizationsService.resolvePendingEmailInvites(user.id, dto.email)
+      .catch((err) => this.logger.error('Failed to resolve pending invites', err));
 
     // Generate email verification token
     const verificationToken = this.tokenService.generateSecureToken();
@@ -67,7 +89,7 @@ export class AuthService {
       success: true,
       message:
         'Registration successful. Please check your email to verify your account.',
-      data: { userId: user.id },
+      data: { userId: user.id, accountType: dto.accountType ?? 'personal' },
     };
   }
 
@@ -388,6 +410,44 @@ export class AuthService {
     return this.issueTokens(user);
   }
 
+  // ── Register From Invite ──
+
+  async registerFromInvite(dto: RegisterFromInviteDto) {
+    const invite = await this.organizationsService.findEmailInviteByToken(dto.inviteToken);
+
+    if (!invite) {
+      throw new BadRequestException('Invalid or expired invite token');
+    }
+    if (!invite.inviteEmail) {
+      throw new BadRequestException('This invite token is not for email-only registration');
+    }
+    if (invite.userId) {
+      throw new BadRequestException('This invite has already been accepted');
+    }
+
+    const existing = await this.usersService.findByEmail(invite.inviteEmail);
+    if (existing) {
+      throw new ConflictException('A user with this email already exists. Please log in and accept the invitation instead.');
+    }
+
+    const hashedPassword = await argon2.hash(dto.password);
+    const user = await this.usersService.create({
+      email: invite.inviteEmail,
+      password: hashedPassword,
+      fullName: dto.fullName,
+      isEmailVerified: true,
+      defaultWorkspaceType: 'PERSONAL',
+    });
+
+    await this.organizationsService.activateInviteForUser(invite.id, user.id);
+
+    // Resolve any other pending email invites for this address
+    this.organizationsService.resolvePendingEmailInvites(user.id, invite.inviteEmail)
+      .catch((err) => this.logger.error('Failed to resolve pending invites', err));
+
+    return this.issueTokens(user);
+  }
+
   private async issueTokens(user: User) {
     const tokens = await this.tokenService.generateTokenPair(
       user.id,
@@ -409,6 +469,8 @@ export class AuthService {
         fullName: user.fullName,
         avatar: user.avatar,
         isEmailVerified: user.isEmailVerified,
+        defaultWorkspaceType: (user as any).defaultWorkspaceType ?? 'PERSONAL',
+        defaultOrganizationId: (user as any).defaultOrganizationId ?? null,
       },
     };
   }

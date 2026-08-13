@@ -32,6 +32,23 @@ enum SubscriptionTier {
   ULTRA
 }
 
+enum WorkspaceType {
+  PERSONAL
+  ORGANIZATION
+}
+
+enum ProviderAccountType {
+  USER
+  ORGANIZATION
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
 model User {
   id                      String           @id @default(uuid())
   email                   String           @unique
@@ -46,20 +63,26 @@ model User {
   generationsUsedThisPeriod Int            @default(0)
   totalGenerationsUsed    Int              @default(0)
 
+  defaultWorkspaceType    WorkspaceType    @default(PERSONAL)
+  defaultOrganizationId   String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  accounts            Account[]
-  verificationTokens  VerificationToken[]
-  passwordResetTokens PasswordResetToken[]
-  repositories        Repository[]
-  importedRepositories Repository[]       @relation("RepoImportedBy")
-  githubToken         UserGithubToken?
-  ownedOrganizations  Organization[]
-  memberships         OrganizationMember[]
-  usageLogs           UsageLog[]
-  connections         Connection[]
-  createdConnections  Connection[]       @relation("ConnectionCreatedBy")
+  accounts             Account[]
+  verificationTokens   VerificationToken[]
+  passwordResetTokens  PasswordResetToken[]
+  repositories         Repository[]
+  importedRepositories Repository[]        @relation("RepoImportedBy")
+  githubToken          UserGithubToken?
+  ownedOrganizations   Organization[]
+  memberships          OrganizationMember[]
+  usageLogs            UsageLog[]
+  connections          Connection[]
+  createdConnections   Connection[]        @relation("ConnectionCreatedBy")
+  teamMemberships      TeamMember[]
+  repositoryAccess     RepositoryMember[]
+  auditLogs            AuditLog[]
 
   @@map("users")
 }
@@ -126,14 +149,18 @@ model UserGithubToken {
 }
 
 model Connection {
-  id               String             @id @default(uuid())
-  provider         ConnectionProvider @default(GITHUB)
-  credentialType   CredentialType     @default(PAT)
-  label            String?
-  encryptedToken   String
-  scopes           String[]
-  lastValidatedAt  DateTime
-  isValid          Boolean            @default(true)
+  id                  String              @id @default(uuid())
+  provider            ConnectionProvider  @default(GITHUB)
+  credentialType      CredentialType      @default(PAT)
+  label               String?
+  encryptedToken      String
+  scopes              String[]
+  lastValidatedAt     DateTime
+  isValid             Boolean             @default(true)
+
+  providerAccountLogin String?
+  providerAccountId    String?
+  providerAccountType  ProviderAccountType?
 
   userId           String?
   orgId            String?
@@ -166,11 +193,13 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  owner        User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner        User                      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   roles        Role[]
   members      OrganizationMember[]
   repositories Repository[]
   connections  Connection[]
+  teams        Team[]
+  auditLogs    AuditLog[]
 
   @@map("organizations")
 }
@@ -193,7 +222,8 @@ model Role {
 model OrganizationMember {
   id          String       @id @default(uuid())
   orgId       String
-  userId      String
+  userId      String?
+  inviteEmail String?
   roleId      String
   status      MemberStatus @default(PENDING)
   inviteToken String?      @unique
@@ -203,7 +233,7 @@ model OrganizationMember {
   updatedAt   DateTime     @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
   role         Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, userId])
@@ -247,9 +277,86 @@ model Repository {
   analysisJobs      AnalysisJob[]
   documentationJobs DocumentationJob[]
   generatedDocs     GeneratedDoc[]
+  memberAccess      RepositoryMember[]
+  teamAccess        TeamRepository[]
 
   @@unique([userId, organizationId, githubRepoId])
   @@map("repositories")
+}
+
+model Team {
+  id        String   @id @default(uuid())
+  orgId     String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members      TeamMember[]
+  repositories TeamRepository[]
+
+  @@unique([orgId, name])
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model TeamRepository {
+  id           String   @id @default(uuid())
+  teamId       String
+  repositoryId String
+  permissions  String[]
+  createdAt    DateTime @default(now())
+
+  team       Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, repositoryId])
+  @@map("team_repositories")
+}
+
+model RepositoryMember {
+  id           String   @id @default(uuid())
+  repositoryId String
+  userId       String
+  permissions  String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, userId])
+  @@map("repository_members")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorId      String
+  orgId        String?
+  action       String
+  resourceType String?
+  resourceId   String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  actor        User          @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, createdAt])
+  @@index([actorId])
+  @@map("audit_logs")
 }
 
 enum DocStatus {
