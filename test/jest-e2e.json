@@ -3,10 +3,17 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
+  "moduleNameMapper": {
+    "^execa$": "<rootDir>/mocks/execa.js",
+    "^src/(.*)$": "<rootDir>/../src/$1"
+  },
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      { "tsconfig": { "esModuleInterop": true } }
+    ]
   },
   "transformIgnorePatterns": [
-    "/node_modules/(?!execa|strip-final-newline|npm-run-path|path-key|human-signals|is-stream|mimic-fn|onetime|signal-exit)"
+    "/node_modules/(?!execa|uuid|strip-final-newline|npm-run-path|path-key|human-signals|is-stream|mimic-fn|onetime|signal-exit)"
   ]
 }

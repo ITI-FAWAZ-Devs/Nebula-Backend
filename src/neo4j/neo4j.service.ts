@@ -428,6 +428,25 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Deletes every node (and relationship) belonging to a repository.
+   * Reuses the same `repositoryId` scoping used by `saveGraph`'s wipe step so
+   * cleanup is consistent with the delete-and-replace invariant.
+   * Throws when the driver is not initialized or the query fails.
+   */
+  async deleteGraph(repositoryId: string): Promise<void> {
+    const session = this.getSession();
+    try {
+      await session.run(
+        `MATCH (n {repositoryId: $repositoryId}) DETACH DELETE n`,
+        { repositoryId },
+      );
+      this.logger.log(`Deleted Neo4j graph for repository ${repositoryId}`);
+    } finally {
+      await session.close();
+    }
+  }
+
   // ---------------------------------------------------------------------
   // Frozen agent graph tools (Phase 0 contract). All Cypher is parameterized
   // and written here — never templated from LLM output.
@@ -488,7 +507,10 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
   /**
    * getCallers — nodes with a CALLS edge into the target (1 hop, capped).
    */
-  async getCallers(repositoryId: string, nodeId: string): Promise<GraphToolNode[]> {
+  async getCallers(
+    repositoryId: string,
+    nodeId: string,
+  ): Promise<GraphToolNode[]> {
     const session = this.getSession();
     try {
       const result = await session.run(
@@ -498,7 +520,11 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
         RETURN DISTINCT ${this.projectNode('caller')} AS node
         LIMIT $limit
         `,
-        { repositoryId, nodeId, limit: neo4j.int(GRAPH_TOOL_MAX_NODES_PER_HOP) },
+        {
+          repositoryId,
+          nodeId,
+          limit: neo4j.int(GRAPH_TOOL_MAX_NODES_PER_HOP),
+        },
       );
       return result.records.map((r) => toGraphToolNode(r.get('node')));
     } finally {
@@ -509,7 +535,10 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
   /**
    * getCallees — nodes the source has a CALLS edge to (1 hop, capped).
    */
-  async getCallees(repositoryId: string, nodeId: string): Promise<GraphToolNode[]> {
+  async getCallees(
+    repositoryId: string,
+    nodeId: string,
+  ): Promise<GraphToolNode[]> {
     const session = this.getSession();
     try {
       const result = await session.run(
@@ -519,7 +548,11 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
         RETURN DISTINCT ${this.projectNode('callee')} AS node
         LIMIT $limit
         `,
-        { repositoryId, nodeId, limit: neo4j.int(GRAPH_TOOL_MAX_NODES_PER_HOP) },
+        {
+          repositoryId,
+          nodeId,
+          limit: neo4j.int(GRAPH_TOOL_MAX_NODES_PER_HOP),
+        },
       );
       return result.records.map((r) => toGraphToolNode(r.get('node')));
     } finally {
@@ -531,7 +564,10 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
    * getImplementations — both directions of IMPLEMENTS/EXTENDS around the node,
    * up to 2 hops.
    */
-  async getImplementations(repositoryId: string, nodeId: string): Promise<GraphToolNode[]> {
+  async getImplementations(
+    repositoryId: string,
+    nodeId: string,
+  ): Promise<GraphToolNode[]> {
     const session = this.getSession();
     try {
       const result = await session.run(
@@ -542,7 +578,11 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
         RETURN DISTINCT ${this.projectNode('related')} AS node
         LIMIT $limit
         `,
-        { repositoryId, nodeId, limit: neo4j.int(GRAPH_TOOL_MAX_NODES_PER_HOP) },
+        {
+          repositoryId,
+          nodeId,
+          limit: neo4j.int(GRAPH_TOOL_MAX_NODES_PER_HOP),
+        },
       );
       return result.records.map((r) => toGraphToolNode(r.get('node')));
     } finally {
@@ -554,7 +594,10 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
    * getFileContext — a File node's direct children (CONTAINS / HAS_METHOD) plus
    * same-file symbols, 1 hop, capped at 40.
    */
-  async getFileContext(repositoryId: string, filePath: string): Promise<GraphToolNode[]> {
+  async getFileContext(
+    repositoryId: string,
+    filePath: string,
+  ): Promise<GraphToolNode[]> {
     const session = this.getSession();
     try {
       const result = await session.run(
@@ -580,7 +623,10 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
    * getModuleOverview — ego neighborhood of a Directory/File over
    * CONTAINS|IMPORTS|DEPENDS_ON, up to 2 hops, capped per hop.
    */
-  async getModuleOverview(repositoryId: string, filePath: string): Promise<GraphToolNode[]> {
+  async getModuleOverview(
+    repositoryId: string,
+    filePath: string,
+  ): Promise<GraphToolNode[]> {
     const session = this.getSession();
     try {
       const result = await session.run(

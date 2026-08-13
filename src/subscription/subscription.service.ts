@@ -37,8 +37,9 @@ export class SubscriptionService {
    */
   getTierConfig(tier: SubscriptionTier): TierConfig {
     const configuredTiers =
-      this.configService.get<Record<string, TierConfig>>('subscription.tiers') ||
-      DEFAULT_SUBSCRIPTION_TIERS;
+      this.configService.get<Record<string, TierConfig>>(
+        'subscription.tiers',
+      ) || DEFAULT_SUBSCRIPTION_TIERS;
 
     const tierKey = tier.toString().toUpperCase();
     return configuredTiers[tierKey] || DEFAULT_SUBSCRIPTION_TIERS.FREE;
@@ -221,9 +222,7 @@ export class SubscriptionService {
       },
     });
 
-    this.logger.log(
-      `Updated subscription tier for user ${userId} to ${tier}`,
-    );
+    this.logger.log(`Updated subscription tier for user ${userId} to ${tier}`);
 
     return this.getUserSubscription(userId);
   }

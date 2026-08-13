@@ -22,7 +22,9 @@ import { SubscriptionModule } from './subscription/subscription.module';
 import { ConnectionsModule } from './connections/connections.module';
 import { VoiceModule } from './voice/voice.module';
 import { AuthorizationModule } from './authorization/authorization.module';
+import { AdminModule } from './admin/admin.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -63,6 +65,7 @@ import { AppService } from './app.service';
     ConnectionsModule,
     VoiceModule,
     AuthorizationModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [
@@ -71,6 +74,11 @@ import { AppService } from './app.service';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    // Global role guard — enforces @Roles() metadata on admin routes
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
     // Global rate limiting guard
     {

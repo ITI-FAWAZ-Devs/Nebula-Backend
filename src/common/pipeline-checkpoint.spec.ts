@@ -44,7 +44,9 @@ describe('pipeline-checkpoint helpers', () => {
     });
 
     it('merges artifacts', () => {
-      let cp = markStage(emptyCheckpoint(), 'graphify', { graphifyPath: '/tmp/graph.json' });
+      let cp = markStage(emptyCheckpoint(), 'graphify', {
+        graphifyPath: '/tmp/graph.json',
+      });
       cp = markStage(cp, 'normalize', { count: 42 });
       expect(cp.artifacts.graphifyPath).toBe('/tmp/graph.json');
       expect(cp.artifacts.count).toBe(42);

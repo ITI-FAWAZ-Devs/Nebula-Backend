@@ -35,9 +35,7 @@ export class ToolResultCache {
       if (!raw) return null;
       return JSON.parse(raw) as RetrievalHit[];
     } catch (error) {
-      this.logger.warn(
-        `Tool cache get failed: ${(error as Error).message}`,
-      );
+      this.logger.warn(`Tool cache get failed: ${(error as Error).message}`);
       return null;
     }
   }
@@ -55,9 +53,7 @@ export class ToolResultCache {
         TOOL_CACHE_TTL_SECONDS,
       );
     } catch (error) {
-      this.logger.warn(
-        `Tool cache set failed: ${(error as Error).message}`,
-      );
+      this.logger.warn(`Tool cache set failed: ${(error as Error).message}`);
     }
   }
 }

@@ -104,7 +104,11 @@ describe('Neo4jService', () => {
     });
 
     it('returns empty result when no records found', async () => {
-      const result = await service.getFileNeighborhood(repositoryId, seedPaths, maxHops);
+      const result = await service.getFileNeighborhood(
+        repositoryId,
+        seedPaths,
+        maxHops,
+      );
       expect(result.nodes).toEqual([]);
       expect(result.edges).toEqual([]);
       expect(result.clusters).toEqual([]);
@@ -116,8 +120,10 @@ describe('Neo4jService', () => {
   describe('saveGraph — label and relationship validation', () => {
     const baseGraph = {
       repositoryId: 'repo-xyz',
-      nodes: [] as import('../graph/interfaces/knowledge-graph.interface').GraphNode[],
-      relationships: [] as import('../graph/interfaces/knowledge-graph.interface').GraphRelationship[],
+      nodes:
+        [] as import('../graph/interfaces/knowledge-graph.interface').GraphNode[],
+      relationships:
+        [] as import('../graph/interfaces/knowledge-graph.interface').GraphRelationship[],
     };
 
     beforeEach(() => {
@@ -138,8 +144,8 @@ describe('Neo4jService', () => {
 
       await service.saveGraph(graph);
 
-      const mergeCall = mockTx.run.mock.calls.find(
-        ([cypher]: [string]) => cypher.includes('MERGE'),
+      const mergeCall = mockTx.run.mock.calls.find(([cypher]: [string]) =>
+        cypher.includes('MERGE'),
       );
       expect(mergeCall?.[0]).toContain(':Function');
     });
@@ -182,8 +188,8 @@ describe('Neo4jService', () => {
 
       await service.saveGraph(graph);
 
-      const mergeCall = mockTx.run.mock.calls.find(
-        ([cypher]: [string]) => cypher.includes(':File'),
+      const mergeCall = mockTx.run.mock.calls.find(([cypher]: [string]) =>
+        cypher.includes(':File'),
       );
       expect(mergeCall?.[0]).toContain('repositoryId: $repositoryId');
     });
@@ -197,7 +203,9 @@ describe('Neo4jService', () => {
     it('rolls back and rethrows on error', async () => {
       mockTx.run.mockRejectedValueOnce(new Error('write failed'));
 
-      await expect(service.saveGraph(baseGraph)).rejects.toThrow('write failed');
+      await expect(service.saveGraph(baseGraph)).rejects.toThrow(
+        'write failed',
+      );
       expect(mockTx.rollback).toHaveBeenCalledTimes(1);
     });
   });

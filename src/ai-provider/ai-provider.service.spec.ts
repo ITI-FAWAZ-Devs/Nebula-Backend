@@ -214,7 +214,9 @@ describe('AiProviderService', () => {
     it('should throw immediately when embedding fails without falling back', async () => {
       mockGeminiEmbedding.embedMany.mockRejectedValue(transientError());
 
-      await expect(service.embedMany(['a'])).rejects.toThrow('upstream unavailable');
+      await expect(service.embedMany(['a'])).rejects.toThrow(
+        'upstream unavailable',
+      );
       expect(mockBedrockEmbedding.embedMany).not.toHaveBeenCalled();
     });
 

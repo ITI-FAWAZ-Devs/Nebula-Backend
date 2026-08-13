@@ -142,6 +142,78 @@ export class ArchitectureDocService {
     };
   }
 
+  /**
+   * Admin-triggered regeneration of the latest architecture document.
+   * Reuses the exact same logic as `regenerate()` but skips the ownership
+   * check (ADMIN authorization is enforced at the controller) and resolves
+   * the current commit using the repository owner's GitHub token, so the
+   * existing GitHub integration is respected for any repository.
+   */
+  async regenerateForAdmin(
+    repositoryId: string,
+  ): Promise<ArchitectureDocRegenerateResponse> {
+    const repository = await this.prisma.repository.findUnique({
+      where: { id: repositoryId },
+    });
+
+    if (!repository) {
+      throw new NotFoundException('Repository not found');
+    }
+
+    this.assertRepositoryReady(repository);
+
+    const activeDoc = await this.findActiveDocument(repositoryId);
+    if (activeDoc) {
+      this.publishArchDoc(repositoryId, activeDoc);
+      return {
+        needsRegeneration: true,
+        docId: activeDoc.id,
+        jobId: activeDoc.id,
+        version: activeDoc.version,
+        status: activeDoc.status,
+      };
+    }
+
+    const latestDoc = await this.prisma.generatedDoc.findFirst({
+      where: { repositoryId, status: DocStatus.COMPLETED },
+      orderBy: { version: 'desc' },
+      select: { version: true, commitSha: true },
+    });
+
+    if (!latestDoc) {
+      throw new BadRequestException(
+        'No completed architecture document to regenerate',
+      );
+    }
+
+    const currentCommit = await this.githubClientService.getLatestCommitSha(
+      repository.userId,
+      repository.owner,
+      repository.name,
+      repository.defaultBranch,
+    );
+
+    if (latestDoc.commitSha && currentCommit === latestDoc.commitSha) {
+      return {
+        needsRegeneration: false,
+        currentCommitSha: currentCommit,
+        latestVersion: latestDoc.version,
+      };
+    }
+
+    const response = await this.createAndEnqueueVersion(
+      repository,
+      currentCommit,
+      repository.userId,
+      this.resolveModel(),
+    );
+
+    return {
+      needsRegeneration: true,
+      ...response,
+    };
+  }
+
   async getLatestCompleted(
     userId: string,
     repositoryId: string,
