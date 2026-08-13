@@ -39,7 +39,7 @@ export class AdminRepositoryDetailDto {
   id: string;
   name: string;
   githubUrl: string;
-  githubRepoId: string;
+  githubRepoId: string | null;
   owner: string;
   defaultBranch: string;
   isPrivate: boolean;

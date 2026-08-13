@@ -45,6 +45,7 @@ describe('Drafting Pipeline Integration', () => {
   };
 
   const repositoryId = 'integration-test-repo';
+  const userId = 'integration-test-user';
 
   beforeAll(async () => {
     if (!RUN_INTEGRATION) {
@@ -136,7 +137,7 @@ describe('Drafting Pipeline Integration', () => {
       return;
     }
 
-    const result = await orchestrator.draft({ repositoryId });
+    const result = await orchestrator.draft({ repositoryId, userId });
 
     expect(result.repositoryId).toBe(repositoryId);
     expect(result.sections.length).toBeGreaterThan(0);
@@ -156,7 +157,7 @@ describe('Drafting Pipeline Integration', () => {
       return;
     }
 
-    const result = await orchestrator.draft({ repositoryId });
+    const result = await orchestrator.draft({ repositoryId, userId });
 
     for (const section of result.sections) {
       if (section.verdict === 'verified') {
@@ -173,7 +174,7 @@ describe('Drafting Pipeline Integration', () => {
       return;
     }
 
-    const result = await orchestrator.draft({ repositoryId });
+    const result = await orchestrator.draft({ repositoryId, userId });
 
     if (result.diagram) {
       expect(result.diagram.mermaidSource).toMatch(/^(flowchart|graph)\s/);
@@ -188,7 +189,7 @@ describe('Drafting Pipeline Integration', () => {
       return;
     }
 
-    const result = await orchestrator.draft({ repositoryId });
+    const result = await orchestrator.draft({ repositoryId, userId });
 
     const graphSection = result.sections.find(
       (s) => s.key === 'dependency-graph',

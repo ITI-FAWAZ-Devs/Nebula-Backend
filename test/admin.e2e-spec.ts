@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, CanActivate, ExecutionContext } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import * as request from 'supertest';
+import request from 'supertest';
 import { DocStatus, UserRole } from '@prisma/client';
 import { AdminController } from '../src/admin/admin.controller';
 import { AdminService } from '../src/admin/admin.service';
