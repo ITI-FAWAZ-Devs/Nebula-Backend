@@ -5,6 +5,9 @@ import { PlannerService } from './planner.service';
 import { ExecutorService } from './executor.service';
 import { ContextBuilderService } from './context-builder.service';
 import { SynthesizerService } from './synthesizer.service';
+import { FollowupGeneratorService } from './followup-generator.service';
+import { AnswerCacheService } from '../retrieval/answer-cache.service';
+import { FastAnswerService } from './fast-answer.service';
 
 export interface AgentLoopResult {
   answer: string;
@@ -12,6 +15,7 @@ export interface AgentLoopResult {
   citedNodeIds: string[];
   toolsUsed: string[];
   contextNodeIds: string[];
+  followups?: string[];
 }
 
 @Injectable()
@@ -23,14 +27,32 @@ export class AgentLoopService {
     private readonly executor: ExecutorService,
     private readonly contextBuilder: ContextBuilderService,
     private readonly synthesizer: SynthesizerService,
+    private readonly followupGenerator: FollowupGeneratorService,
+    private readonly answerCache: AnswerCacheService,
+    private readonly fastAnswer: FastAnswerService,
   ) {}
 
   async run(params: {
     repositoryId: string;
     question: string;
     recentNodeIds?: string[];
+    conversationHistory?: { q: string; a: string }[];
     responseStyle?: 'text' | 'voice';
+    model?: string;
   }): Promise<AgentLoopResult> {
+    const isSingleTurn =
+      !params.conversationHistory || params.conversationHistory.length === 0;
+    if (isSingleTurn) {
+      const cached = await this.answerCache.get(
+        params.repositoryId,
+        params.question,
+      );
+      if (cached) {
+        this.logger.log(`Answer cache hit for question: "${params.question}"`);
+        return cached;
+      }
+    }
+
     const collected: RetrievalHit[] = [];
     const toolsUsed: string[] = [];
     let priorSummary = '';
@@ -40,6 +62,7 @@ export class AgentLoopService {
         question: params.question,
         recentNodeIds: params.recentNodeIds,
         priorToolResultsSummary: priorSummary || undefined,
+        conversationHistory: params.conversationHistory,
       });
 
       if (!plan.functionCalls.length) {
@@ -74,12 +97,31 @@ export class AgentLoopService {
       contextText,
       selectedHits,
       params.responseStyle,
+      params.model,
     );
 
     const citedNodeIds = [
       ...new Set(citations.map((c) => c.nodeId).filter(Boolean)),
     ];
     const contextNodeIds = selectedHits.map((h) => h.nodeId);
+
+    const followups = await this.followupGenerator.generate(
+      params.question,
+      answer,
+    );
+
+    const result: AgentLoopResult = {
+      answer,
+      citations,
+      citedNodeIds,
+      toolsUsed: [...new Set(toolsUsed)],
+      contextNodeIds,
+      followups,
+    };
+
+    if (isSingleTurn) {
+      await this.answerCache.set(params.repositoryId, params.question, result);
+    }
 
     this.logger.log(
       JSON.stringify({
@@ -90,13 +132,7 @@ export class AgentLoopService {
       }),
     );
 
-    return {
-      answer,
-      citations,
-      citedNodeIds,
-      toolsUsed: [...new Set(toolsUsed)],
-      contextNodeIds,
-    };
+    return result;
   }
 
   /**
@@ -106,12 +142,79 @@ export class AgentLoopService {
     repositoryId: string;
     question: string;
     recentNodeIds?: string[];
+    conversationHistory?: { q: string; a: string }[];
     responseStyle?: 'text' | 'voice';
+    model?: string;
   }): AsyncGenerator<{
-    event: 'token' | 'citation' | 'done' | 'error';
+    event: 'mode' | 'token' | 'citation' | 'done' | 'followups' | 'error';
     data: unknown;
   }> {
     try {
+      const isSingleTurn =
+        !params.conversationHistory || params.conversationHistory.length === 0;
+      if (isSingleTurn) {
+        const cached = await this.answerCache.get(
+          params.repositoryId,
+          params.question,
+        );
+        if (cached) {
+          this.logger.log(
+            `Answer cache hit for stream question: "${params.question}"`,
+          );
+          yield { event: 'mode', data: 'standard' };
+          for (const c of cached.citations) {
+            yield { event: 'citation', data: c };
+          }
+          yield { event: 'token', data: cached.answer };
+          yield {
+            event: 'done',
+            data: {
+              citations: cached.citations,
+              citedNodeIds: cached.citedNodeIds,
+              toolsUsed: cached.toolsUsed,
+              answer: cached.answer,
+              followups: cached.followups,
+            },
+          };
+          if (cached.followups && cached.followups.length > 0) {
+            yield { event: 'followups', data: cached.followups };
+          }
+          return;
+        }
+
+        const fastResult = await this.fastAnswer.findFastAnswer(
+          params.repositoryId,
+          params.question,
+        );
+        if (fastResult) {
+          yield { event: 'mode', data: 'fast' };
+          for (const c of fastResult.citations) {
+            yield { event: 'citation', data: c };
+          }
+          yield { event: 'token', data: fastResult.answer };
+          const followups = await this.followupGenerator.generate(
+            params.question,
+            fastResult.answer,
+          );
+          yield {
+            event: 'done',
+            data: {
+              citations: fastResult.citations,
+              citedNodeIds: [],
+              toolsUsed: ['fast_answer_wiki'],
+              answer: fastResult.answer,
+              followups,
+            },
+          };
+          if (followups.length > 0) {
+            yield { event: 'followups', data: followups };
+          }
+          return;
+        }
+      }
+
+      yield { event: 'mode', data: 'standard' };
+
       const collected: RetrievalHit[] = [];
       const toolsUsed: string[] = [];
       let priorSummary = '';
@@ -121,6 +224,7 @@ export class AgentLoopService {
           question: params.question,
           recentNodeIds: params.recentNodeIds,
           priorToolResultsSummary: priorSummary || undefined,
+          conversationHistory: params.conversationHistory,
         });
 
         if (!plan.functionCalls.length) break;
@@ -164,6 +268,7 @@ export class AgentLoopService {
         contextText,
         selectedHits,
         params.responseStyle,
+        params.model,
       )) {
         if (chunk.type === 'token') {
           answer += chunk.data as string;
@@ -183,6 +288,28 @@ export class AgentLoopService {
       ];
       const contextNodeIds = selectedHits.map((h) => h.nodeId);
 
+      const followups = await this.followupGenerator.generate(
+        params.question,
+        answer,
+      );
+
+      const loopResult: AgentLoopResult = {
+        answer,
+        citations,
+        citedNodeIds,
+        toolsUsed: [...new Set(toolsUsed)],
+        contextNodeIds,
+        followups,
+      };
+
+      if (isSingleTurn) {
+        await this.answerCache.set(
+          params.repositoryId,
+          params.question,
+          loopResult,
+        );
+      }
+
       this.logger.log(
         JSON.stringify({
           question: params.question.slice(0, 200),
@@ -199,8 +326,16 @@ export class AgentLoopService {
           citedNodeIds,
           toolsUsed: [...new Set(toolsUsed)],
           answer,
+          followups,
         },
       };
+
+      if (followups.length > 0) {
+        yield {
+          event: 'followups',
+          data: followups,
+        };
+      }
     } catch (error) {
       yield {
         event: 'error',

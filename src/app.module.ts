@@ -21,6 +21,7 @@ import { AgentRagModule } from './agent-rag/agent-rag.module';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { ConnectionsModule } from './connections/connections.module';
 import { VoiceModule } from './voice/voice.module';
+import { McpModule } from './mcp/mcp.module';
 import { AuthorizationModule } from './authorization/authorization.module';
 import { AdminModule } from './admin/admin.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -64,6 +65,7 @@ import { AppService } from './app.service';
     SubscriptionModule,
     ConnectionsModule,
     VoiceModule,
+    McpModule,
     AuthorizationModule,
     AdminModule,
   ],

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GeminiService } from '../../gemini/gemini.service';
+import { AiProviderService } from '../../ai-provider/ai-provider.service';
 import { AgentCitation, RetrievalHit } from '../dto/retrieval-hit.dto';
 
 export interface SynthesizeResult {
@@ -9,7 +10,10 @@ export interface SynthesizeResult {
 
 @Injectable()
 export class SynthesizerService {
-  constructor(private readonly gemini: GeminiService) {}
+  constructor(
+    private readonly gemini: GeminiService,
+    private readonly aiProvider: AiProviderService,
+  ) {}
 
   private systemInstruction(responseStyle?: 'text' | 'voice'): string {
     const base = [
@@ -37,6 +41,7 @@ export class SynthesizerService {
     contextText: string,
     selectedHits: RetrievalHit[],
     responseStyle?: 'text' | 'voice',
+    model?: string,
   ): Promise<SynthesizeResult> {
     const prompt = [
       `Question: ${question}`,
@@ -47,9 +52,17 @@ export class SynthesizerService {
       'Answer:',
     ].join('\n');
 
-    const answer = await this.gemini.generateContent(
-      `${this.systemInstruction(responseStyle)}\n\n${prompt}`,
-    );
+    let answer = '';
+    if (model && model !== 'gemini') {
+      const res = await this.aiProvider.answerQuestion(question, contextText, {
+        overrideModel: model,
+      });
+      answer = res.text;
+    } else {
+      answer = await this.gemini.generateContent(
+        `${this.systemInstruction(responseStyle)}\n\n${prompt}`,
+      );
+    }
 
     return {
       answer,
@@ -62,6 +75,7 @@ export class SynthesizerService {
     contextText: string,
     selectedHits: RetrievalHit[],
     responseStyle?: 'text' | 'voice',
+    model?: string,
   ): AsyncGenerator<{ type: 'token' | 'done'; data: unknown }> {
     const prompt = [
       `Question: ${question}`,
@@ -73,12 +87,20 @@ export class SynthesizerService {
     ].join('\n');
 
     let answer = '';
-    for await (const token of this.gemini.generateContentStream({
-      systemInstruction: this.systemInstruction(responseStyle),
-      prompt,
-    })) {
-      answer += token;
-      yield { type: 'token', data: token };
+    if (model && model !== 'gemini') {
+      const res = await this.aiProvider.answerQuestion(question, contextText, {
+        overrideModel: model,
+      });
+      answer = res.text;
+      yield { type: 'token', data: answer };
+    } else {
+      for await (const token of this.gemini.generateContentStream({
+        systemInstruction: this.systemInstruction(responseStyle),
+        prompt,
+      })) {
+        answer += token;
+        yield { type: 'token', data: token };
+      }
     }
 
     const citations = this.citationsFromHits(selectedHits);

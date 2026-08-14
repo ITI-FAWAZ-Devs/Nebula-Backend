@@ -5,7 +5,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentLoopService } from './orchestration/agent-loop.service';
+import { DeepResearchService } from './orchestration/deep-research.service';
 import { AgentSessionStore } from './session/agent-session.store';
+import { ConversationPersistenceService } from './persistence/conversation-persistence.service';
 import {
   CreateSessionResponse,
   SessionMetadataResponse,
@@ -17,6 +19,8 @@ export class AgentRagService {
     private readonly prisma: PrismaService,
     private readonly sessions: AgentSessionStore,
     private readonly agentLoop: AgentLoopService,
+    private readonly deepResearch: DeepResearchService,
+    private readonly persistence: ConversationPersistenceService,
   ) {}
 
   async createSession(
@@ -51,6 +55,8 @@ export class AgentRagService {
     repositoryId: string;
     sessionId: string;
     question: string;
+    mode?: 'standard' | 'fast' | 'deep';
+    model?: string;
   }): AsyncGenerator<{ event: string; data: unknown }> {
     await this.findOwnedRepository(params.userId, params.repositoryId);
     const session = await this.requireSession(
@@ -59,15 +65,35 @@ export class AgentRagService {
       params.repositoryId,
     );
 
+    if (params.model && params.model !== session.model) {
+      await this.sessions.updateModel(params.sessionId, params.model);
+    }
+
+    const resolvedModel = params.model || session.model;
     const recentNodeIds = this.sessions.recentCitedNodeIds(session);
+    const conversationHistory = session.turns.map((t) => ({ q: t.q, a: t.a }));
     let finalAnswer = '';
     let citedNodeIds: string[] = [];
+    let citationsPayload: unknown = null;
 
-    for await (const chunk of this.agentLoop.runStream({
-      repositoryId: params.repositoryId,
-      question: params.question,
-      recentNodeIds,
-    })) {
+    const stream =
+      params.mode === 'deep'
+        ? this.deepResearch.runStream({
+            repositoryId: params.repositoryId,
+            question: params.question,
+            recentNodeIds,
+            conversationHistory,
+            model: resolvedModel,
+          })
+        : this.agentLoop.runStream({
+            repositoryId: params.repositoryId,
+            question: params.question,
+            recentNodeIds,
+            conversationHistory,
+            model: resolvedModel,
+          });
+
+    for await (const chunk of stream) {
       if (chunk.event === 'done') {
         const done = chunk.data as {
           answer: string;
@@ -77,6 +103,7 @@ export class AgentRagService {
         };
         finalAnswer = done.answer;
         citedNodeIds = done.citedNodeIds;
+        citationsPayload = done.citations;
       }
       yield chunk;
     }
@@ -86,6 +113,14 @@ export class AgentRagService {
         q: params.question,
         a: finalAnswer,
         citedNodeIds,
+      });
+
+      await this.persistence.persistTurn({
+        userId: params.userId,
+        repositoryId: params.repositoryId,
+        question: params.question,
+        answer: finalAnswer,
+        citations: citationsPayload,
       });
     }
   }

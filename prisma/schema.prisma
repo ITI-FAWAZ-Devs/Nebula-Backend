@@ -283,6 +283,7 @@ model Repository {
   analysisJobs      AnalysisJob[]
   documentationJobs DocumentationJob[]
   generatedDocs     GeneratedDoc[]
+  conversationThreads ConversationThread[]
   memberAccess      RepositoryMember[]
   teamAccess        TeamRepository[]
 
@@ -490,4 +491,35 @@ model UsageLog {
   @@index([userId])
   @@map("usage_logs")
 }
+
+model ConversationThread {
+  id           String   @id @default(uuid())
+  repositoryId String
+  userId       String
+  title        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  messages   ConversationMessage[]
+  repository Repository            @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId, userId])
+  @@map("conversation_threads")
+}
+
+model ConversationMessage {
+  id        String   @id @default(uuid())
+  threadId  String
+  role      String
+  content   String
+  citations Json?
+  createdAt DateTime @default(now())
+
+  thread ConversationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@map("conversation_messages")
+}
+
 
