@@ -19,6 +19,7 @@ import { DocumentationPipeline } from './documentation.pipeline';
 import { DocumentationProcessor } from './documentation.processor';
 import { StaleJobRecoveryService } from './stale-job-recovery.service';
 import { AskService } from './ask.service';
+import { AgentRagModule } from '../agent-rag/agent-rag.module';
 import { DOCUMENTATION_QUEUE } from './documentation.constants';
 import { ARCHITECTURE_DRAFT_QUEUE } from '../architecture-doc/architecture-doc.constants';
 
@@ -40,6 +41,7 @@ import { ARCHITECTURE_DRAFT_QUEUE } from '../architecture-doc/architecture-doc.c
     ProgressModule,
     SubscriptionModule,
     ConnectionsModule,
+    AgentRagModule,
   ],
   controllers: [RepositoriesController],
   providers: [

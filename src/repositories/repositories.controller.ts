@@ -361,7 +361,7 @@ export class RepositoriesController {
 
   /**
    * POST /repositories/:id/ask
-   * Query the repository documentation using RAG.
+   * @deprecated Legacy stateless endpoint. Redirection target is POST /repositories/:id/agent/sessions/:sessionId/messages
    */
   @Post(':id/ask')
   async askQuestion(

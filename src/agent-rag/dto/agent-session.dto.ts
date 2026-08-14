@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export interface AgentSessionTurn {
   q: string;
@@ -12,6 +12,7 @@ export interface AgentSessionRecord {
   userId: string;
   turns: AgentSessionTurn[];
   updatedAt: string;
+  model?: string;
 }
 
 export class AgentMessageDto {
@@ -19,6 +20,14 @@ export class AgentMessageDto {
   @IsNotEmpty()
   @MaxLength(4000)
   question!: string;
+
+  @IsOptional()
+  @IsIn(['standard', 'fast', 'deep'])
+  mode?: 'standard' | 'fast' | 'deep';
+
+  @IsOptional()
+  @IsString()
+  model?: string;
 }
 
 export interface CreateSessionResponse {

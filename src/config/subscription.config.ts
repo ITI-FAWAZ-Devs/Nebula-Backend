@@ -28,7 +28,7 @@ export const DEFAULT_SUBSCRIPTION_TIERS: Record<string, TierConfig> = {
     llmModel: 'gemini-3.1-flash-lite',
     llmProvider: 'gemini',
     embeddingProvider: 'gemini',
-    embeddingModel: 'text-embedding-004',
+    embeddingModel: 'gemini-embedding-2',
   },
 };
 

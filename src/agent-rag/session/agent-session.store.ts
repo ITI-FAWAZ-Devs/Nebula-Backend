@@ -24,6 +24,7 @@ export class AgentSessionStore {
   async create(
     repositoryId: string,
     userId: string,
+    model?: string,
   ): Promise<AgentSessionRecord> {
     const sessionId = uuidv4();
     const record: AgentSessionRecord = {
@@ -32,6 +33,7 @@ export class AgentSessionStore {
       userId,
       turns: [],
       updatedAt: new Date().toISOString(),
+      model,
     };
     await this.redis.set(
       this.key(sessionId),
@@ -50,6 +52,23 @@ export class AgentSessionStore {
       this.logger.warn(`Session get failed: ${(error as Error).message}`);
       return null;
     }
+  }
+
+  async updateModel(
+    sessionId: string,
+    model: string,
+  ): Promise<AgentSessionRecord | null> {
+    const record = await this.get(sessionId);
+    if (!record) return null;
+
+    record.model = model;
+    record.updatedAt = new Date().toISOString();
+    await this.redis.set(
+      this.key(sessionId),
+      JSON.stringify(record),
+      SESSION_TTL_SECONDS,
+    );
+    return record;
   }
 
   async appendTurn(

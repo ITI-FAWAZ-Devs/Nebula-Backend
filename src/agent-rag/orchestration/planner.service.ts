@@ -7,6 +7,7 @@ export interface PlannerInput {
   question: string;
   recentNodeIds?: string[];
   priorToolResultsSummary?: string;
+  conversationHistory?: { q: string; a: string }[];
 }
 
 @Injectable()
@@ -17,6 +18,17 @@ export class PlannerService {
     text?: string;
     functionCalls: GeminiFunctionCall[];
   }> {
+    let historyText = '';
+    if (input.conversationHistory && input.conversationHistory.length > 0) {
+      const formattedTurns = input.conversationHistory.map(
+        (turn) => `User: ${turn.q}\nAssistant: ${turn.a}`,
+      );
+      historyText = `Prior conversation history:\n${formattedTurns.join('\n\n')}`;
+      if (historyText.length > 2000) {
+        historyText = `Prior conversation history (truncated):\n${historyText.slice(-2000)}`;
+      }
+    }
+
     const recent =
       input.recentNodeIds && input.recentNodeIds.length > 0
         ? `Recently discussed entities (nodeIds): ${input.recentNodeIds.join(', ')}`
@@ -34,17 +46,14 @@ export class PlannerService {
       'If you already have enough evidence from prior tool results, answer briefly that synthesis can proceed and call no tools.',
     ].join(' ');
 
+    const textParts = [historyText, `Question: ${input.question}`, recent, prior, 'Choose tool calls now.'].filter(Boolean);
+
     const contents: Content[] = [
       {
         role: 'user',
         parts: [
           {
-            text: [
-              `Question: ${input.question}`,
-              recent,
-              prior,
-              'Choose tool calls now.',
-            ].join('\n\n'),
+            text: textParts.join('\n\n'),
           },
         ],
       },
