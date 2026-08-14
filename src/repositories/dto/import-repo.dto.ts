@@ -1,4 +1,11 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUrl, IsUUID } from 'class-validator';
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  IsUUID,
+} from 'class-validator';
 
 export class ImportRepoDto {
   @IsOptional()
@@ -36,4 +43,3 @@ export class ImportRepoDto {
   @IsUUID()
   connectionId?: string;
 }
-

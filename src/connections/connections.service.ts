@@ -316,4 +316,142 @@ export class ConnectionsService {
     const adapter = this.getAdapter(provider);
     return adapter.fetchRepoMetadata(owner, repo, token ?? undefined);
   }
+
+  /**
+   * Stores an OAuth access token as a Connection for a user or org.
+   * Used by the GitHub OAuth connect callback.
+   */
+  async storeOAuthToken(opts: {
+    userId: string;
+    orgId?: string | null;
+    rawToken: string;
+    provider: ConnectionProvider;
+    login: string;
+    githubId: string;
+    accountType: 'USER' | 'ORGANIZATION';
+    scopes: string[];
+  }): Promise<Omit<Connection, 'encryptedToken'>> {
+    const encryptedToken = this.encryptionService.encrypt(opts.rawToken);
+    const label = opts.login;
+
+    const data: any = {
+      provider: opts.provider,
+      credentialType: 'OAUTH_TOKEN',
+      label,
+      encryptedToken,
+      scopes: opts.scopes,
+      lastValidatedAt: new Date(),
+      isValid: true,
+      providerAccountLogin: opts.login,
+      providerAccountId: opts.githubId,
+      providerAccountType: opts.accountType,
+      createdByUser: { connect: { id: opts.userId } },
+    };
+
+    if (opts.orgId) {
+      data.organization = { connect: { id: opts.orgId } };
+    } else {
+      data.user = { connect: { id: opts.userId } };
+    }
+
+    try {
+      const connection = await this.prisma.connection.upsert({
+        where: opts.orgId
+          ? { orgId_provider_label: { orgId: opts.orgId, provider: opts.provider, label } }
+          : { userId_provider_label: { userId: opts.userId, provider: opts.provider, label } },
+        create: data,
+        update: {
+          encryptedToken,
+          scopes: opts.scopes,
+          lastValidatedAt: new Date(),
+          isValid: true,
+          providerAccountLogin: opts.login,
+          providerAccountId: opts.githubId,
+          providerAccountType: opts.accountType,
+        },
+      });
+      const { encryptedToken: _, ...safeData } = connection;
+      this.logger.log(`Stored OAuth token for ${opts.login} (${opts.accountType})`);
+      return safeData;
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        throw new BadRequestException(
+          `A connection for ${opts.login} already exists for this provider.`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Lists the GitHub organizations accessible by a given OAuth token.
+   */
+  async listGithubOrgsForToken(rawToken: string): Promise<{
+    user: { login: string; id: string; type: 'USER'; avatarUrl: string | null };
+    orgs: Array<{ login: string; id: string; type: 'ORGANIZATION'; avatarUrl: string | null }>;
+  }> {
+    const headers = {
+      Authorization: `Bearer ${rawToken}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Nebula-Backend',
+    };
+
+    const [userRes, orgsRes] = await Promise.all([
+      fetch('https://api.github.com/user', { headers }),
+      fetch('https://api.github.com/user/orgs?per_page=100', { headers }),
+    ]);
+
+    if (!userRes.ok) {
+      throw new BadRequestException('Failed to fetch GitHub user info');
+    }
+
+    const userData = await userRes.json() as { login: string; id: number; avatar_url: string };
+    const orgsData = orgsRes.ok ? (await orgsRes.json() as Array<{ login: string; id: number; avatar_url: string }>) : [];
+
+    return {
+      user: { login: userData.login, id: String(userData.id), type: 'USER', avatarUrl: userData.avatar_url },
+      orgs: orgsData.map((o) => ({
+        login: o.login,
+        id: String(o.id),
+        type: 'ORGANIZATION' as const,
+        avatarUrl: o.avatar_url,
+      })),
+    };
+  }
+
+  /**
+   * Gets a decrypted token for a user connection by connectionId (verifying user ownership).
+   */
+  async getDecryptedUserToken(connectionId: string, userId: string): Promise<string> {
+    const conn = await this.getConnectionById(connectionId, userId);
+    return this.encryptionService.decrypt(conn.encryptedToken);
+  }
+
+  /**
+   * Fetches remote repositories scoped to a specific connectionId.
+   * Handles per-connection token resolution.
+   */
+  async fetchRemoteRepositoriesForConnection(
+    connectionId: string,
+    userId: string,
+  ): Promise<RemoteRepository[]> {
+    const connection = await this.prisma.connection.findUnique({ where: { id: connectionId } });
+    if (!connection) throw new BadRequestException('Connection not found');
+
+    // Verify ownership
+    if (connection.userId && connection.userId !== userId) {
+      throw new BadRequestException('You do not have access to this connection');
+    }
+
+    const token = this.encryptionService.decrypt(connection.encryptedToken);
+    const adapter = this.getAdapter(connection.provider);
+
+    // If this connection is for a specific GitHub org, filter to org repos
+    if (connection.providerAccountType === 'ORGANIZATION' && connection.providerAccountLogin) {
+      return (adapter as any).fetchOrgRepositories?.(token, connection.providerAccountLogin)
+        ?? adapter.fetchUserRepositories(token);
+    }
+
+    return adapter.fetchUserRepositories(token);
+  }
 }

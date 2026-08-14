@@ -21,6 +21,7 @@ import {
   fromPrismaJson,
   markStage,
   hasStage,
+  toPrismaJson,
   ensureCheckpointDir,
   removeCheckpointDir,
   getWorkspaceRoot,
@@ -101,9 +102,7 @@ export class DocumentationPipeline {
       }
 
       if (isPathAccessible && localPath) {
-        this.logger.log(
-          `[${jobId}] Reusing existing local path ${localPath}`,
-        );
+        this.logger.log(`[${jobId}] Reusing existing local path ${localPath}`);
         try {
           const git = simpleGit(localPath);
           commitHash = (await git.revparse(['HEAD'])).trim();
@@ -152,9 +151,9 @@ export class DocumentationPipeline {
         'discovery',
         RepositoryStatus.INDEXING,
       );
-      await this.discoveryService.scan(localPath!);
+      await this.discoveryService.scan(localPath);
 
-      const files = await this.getFilesRecursively(localPath!);
+      const files = await this.getFilesRecursively(localPath);
       this.logger.log(`[${jobId}] Discovered ${files.length} code files`);
 
       if (files.length === 0) {
@@ -183,7 +182,7 @@ export class DocumentationPipeline {
         }
 
         try {
-          const fullPath = path.join(localPath!, file);
+          const fullPath = path.join(localPath, file);
           const content = await fs.readFile(fullPath, 'utf-8');
           const description = (
             await this.aiProviderService.describeFile(file, content, {
@@ -230,7 +229,12 @@ export class DocumentationPipeline {
 
       let nextIndex = 0;
       const workers = Array.from(
-        { length: Math.min(this.describeConcurrency, Math.max(remaining.length, 1)) },
+        {
+          length: Math.min(
+            this.describeConcurrency,
+            Math.max(remaining.length, 1),
+          ),
+        },
         async () => {
           while (nextIndex < remaining.length) {
             const file = remaining[nextIndex];
@@ -316,7 +320,9 @@ export class DocumentationPipeline {
       });
 
       // Remove durable checkpoint artifacts on clean success
-      await removeCheckpointDir(this.workspaceRoot, jobId).catch(() => undefined);
+      await removeCheckpointDir(this.workspaceRoot, jobId).catch(
+        () => undefined,
+      );
 
       this.logger.log(
         `[${jobId}] Documentation indexing completed for repository ${repositoryId}`,
@@ -372,11 +378,7 @@ export class DocumentationPipeline {
     descriptionsPath: string,
     descriptions: Record<string, string>,
   ): Promise<void> {
-    await fs.writeFile(
-      descriptionsPath,
-      JSON.stringify(descriptions),
-      'utf-8',
-    );
+    await fs.writeFile(descriptionsPath, JSON.stringify(descriptions), 'utf-8');
   }
 
   private async setStage(
@@ -400,7 +402,7 @@ export class DocumentationPipeline {
   ): Promise<void> {
     await this.prisma.documentationJob.update({
       where: { id: jobId },
-      data: { checkpoint: checkpoint as object },
+      data: { checkpoint: toPrismaJson(checkpoint) },
     });
   }
 
@@ -459,11 +461,45 @@ export class DocumentationPipeline {
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
         const binaryExtensions = new Set([
-          '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp', '.bmp',
-          '.tiff', '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar', '.mp3',
-          '.wav', '.mp4', '.avi', '.mov', '.mkv', '.woff', '.woff2', '.ttf',
-          '.eot', '.otf', '.db', '.sqlite', '.sqlite3', '.exe', '.dll',
-          '.so', '.dylib', '.dmg', '.jar', '.class', '.pyc', '.o', '.obj',
+          '.png',
+          '.jpg',
+          '.jpeg',
+          '.gif',
+          '.ico',
+          '.svg',
+          '.webp',
+          '.bmp',
+          '.tiff',
+          '.pdf',
+          '.zip',
+          '.tar',
+          '.gz',
+          '.7z',
+          '.rar',
+          '.mp3',
+          '.wav',
+          '.mp4',
+          '.avi',
+          '.mov',
+          '.mkv',
+          '.woff',
+          '.woff2',
+          '.ttf',
+          '.eot',
+          '.otf',
+          '.db',
+          '.sqlite',
+          '.sqlite3',
+          '.exe',
+          '.dll',
+          '.so',
+          '.dylib',
+          '.dmg',
+          '.jar',
+          '.class',
+          '.pyc',
+          '.o',
+          '.obj',
         ]);
 
         if (binaryExtensions.has(ext)) continue;

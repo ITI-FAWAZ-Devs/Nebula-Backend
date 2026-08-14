@@ -61,4 +61,4 @@ import { SubscriptionModule } from '../subscription/subscription.module';
     ArchitectureDocEmbedderService,
   ],
 })
-export class ArchitectureDocModule { }
+export class ArchitectureDocModule {}

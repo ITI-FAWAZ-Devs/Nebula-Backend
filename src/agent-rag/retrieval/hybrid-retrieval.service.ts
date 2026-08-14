@@ -38,10 +38,7 @@ export class HybridRetrievalService {
       ]),
     );
 
-    const merged = this.dedupeByNodeId([
-      ...vectorHits,
-      ...expansions.flat(),
-    ]);
+    const merged = this.dedupeByNodeId([...vectorHits, ...expansions.flat()]);
 
     const enriched = await this.enricher.enrich(repositoryId, merged);
     return this.reranker.rerank(query, enriched);

@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnApplicationBootstrap,
-} from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
@@ -13,13 +9,23 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProgressEventsService } from '../progress/progress-events.service';
-import { DOCUMENTATION_QUEUE, DocumentationJobPayload } from './documentation.constants';
-import { ANALYSIS_QUEUE, AnalysisJobPayload } from '../analysis/analysis.constants';
+import {
+  DOCUMENTATION_QUEUE,
+  DocumentationJobPayload,
+} from './documentation.constants';
+import {
+  ANALYSIS_QUEUE,
+  AnalysisJobPayload,
+} from '../analysis/analysis.constants';
 import {
   ARCHITECTURE_DRAFT_QUEUE,
   ArchitectureDraftJobPayload,
 } from '../architecture-doc/architecture-doc.constants';
-import { fromPrismaJson, MAX_RESUME_COUNT } from '../common/pipeline-checkpoint';
+import {
+  fromPrismaJson,
+  toPrismaJson,
+  MAX_RESUME_COUNT,
+} from '../common/pipeline-checkpoint';
 
 const STALE_THRESHOLD_MS = 15 * 60 * 1000;
 
@@ -113,13 +119,17 @@ export class StaleJobRecoveryService implements OnApplicationBootstrap {
           userId: repository.userId,
         };
 
-        const queueJob = await this.documentationQueue.add('document', payload, {
-          jobId: `${job.id}-resume-${resumeCount + 1}`,
-          attempts: 5,
-          backoff: { type: 'exponential', delay: 5000 },
-          removeOnComplete: 100,
-          removeOnFail: 50,
-        });
+        const queueJob = await this.documentationQueue.add(
+          'document',
+          payload,
+          {
+            jobId: `${job.id}-resume-${resumeCount + 1}`,
+            attempts: 5,
+            backoff: { type: 'exponential', delay: 5000 },
+            removeOnComplete: 100,
+            removeOnFail: 50,
+          },
+        );
 
         await this.prisma.documentationJob.update({
           where: { id: job.id },
@@ -130,7 +140,7 @@ export class StaleJobRecoveryService implements OnApplicationBootstrap {
             finishedAt: null,
             queueJobId: String(queueJob.id),
             resumeCount: resumeCount + 1,
-            checkpoint: checkpoint as object,
+            checkpoint: toPrismaJson(checkpoint),
           },
         });
 
@@ -146,7 +156,11 @@ export class StaleJobRecoveryService implements OnApplicationBootstrap {
         this.logger.error(
           `Failed to re-enqueue documentation job ${job.id}: ${(err as Error).message}`,
         );
-        await this.failDocumentationJob(job.id, job.repositoryId, 'Failed to re-enqueue after interruption');
+        await this.failDocumentationJob(
+          job.id,
+          job.repositoryId,
+          'Failed to re-enqueue after interruption',
+        );
       }
     }
   }
@@ -216,7 +230,7 @@ export class StaleJobRecoveryService implements OnApplicationBootstrap {
             finishedAt: null,
             queueJobId: String(queueJob.id),
             resumeCount: resumeCount + 1,
-            checkpoint: checkpoint as object,
+            checkpoint: toPrismaJson(checkpoint),
           },
         });
 
@@ -232,7 +246,11 @@ export class StaleJobRecoveryService implements OnApplicationBootstrap {
         this.logger.error(
           `Failed to re-enqueue analysis job ${job.id}: ${(err as Error).message}`,
         );
-        await this.failAnalysisJob(job.id, job.repositoryId, 'Failed to re-enqueue after interruption');
+        await this.failAnalysisJob(
+          job.id,
+          job.repositoryId,
+          'Failed to re-enqueue after interruption',
+        );
       }
     }
   }
@@ -303,7 +321,7 @@ export class StaleJobRecoveryService implements OnApplicationBootstrap {
             status: DocStatus.PENDING,
             errorMessage: null,
             resumeCount: resumeCount + 1,
-            checkpoint: checkpoint as object,
+            checkpoint: toPrismaJson(checkpoint),
           },
         });
 
@@ -346,7 +364,11 @@ export class StaleJobRecoveryService implements OnApplicationBootstrap {
           in: [DocumentationJobStatus.PENDING, DocumentationJobStatus.RUNNING],
         },
       },
-      data: { status: DocumentationJobStatus.FAILED, error, finishedAt: new Date() },
+      data: {
+        status: DocumentationJobStatus.FAILED,
+        error,
+        finishedAt: new Date(),
+      },
     });
 
     await this.prisma.repository

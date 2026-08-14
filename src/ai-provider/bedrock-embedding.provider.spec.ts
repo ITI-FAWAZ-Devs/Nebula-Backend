@@ -181,7 +181,9 @@ describe('BedrockGatewayEmbeddingProvider', () => {
     global.fetch = fetchMock;
     const provider = buildProvider();
 
-    await expect(provider.embedMany(['hello'], 'search_query')).rejects.toThrow('status 502');
+    await expect(provider.embedMany(['hello'], 'search_query')).rejects.toThrow(
+      'status 502',
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

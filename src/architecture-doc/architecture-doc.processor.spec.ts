@@ -101,7 +101,9 @@ describe('ArchitectureDocProcessor', () => {
         { provide: ArchitectureDocEmbedderService, useValue: mockEmbedder },
         {
           provide: MailService,
-          useValue: { sendJobCompletedEmail: jest.fn().mockResolvedValue(undefined) },
+          useValue: {
+            sendJobCompletedEmail: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();

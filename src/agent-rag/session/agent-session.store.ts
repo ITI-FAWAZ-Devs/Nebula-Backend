@@ -6,10 +6,7 @@ import {
   SESSION_TTL_SECONDS,
   SESSION_TURN_WINDOW,
 } from '../agent-rag.constants';
-import {
-  AgentSessionRecord,
-  AgentSessionTurn,
-} from '../dto/agent-session.dto';
+import { AgentSessionRecord, AgentSessionTurn } from '../dto/agent-session.dto';
 
 @Injectable()
 export class AgentSessionStore {

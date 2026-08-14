@@ -48,19 +48,26 @@ export class RepositoriesController {
 
   /**
    * GET /repositories/github
-   * Lists the user's GitHub repositories (fetched live from GitHub, with caching and pagination).
+   * Lists the user's GitHub repositories. Accepts optional ?connectionId= for
+   * scoped browsing (OAuth connection per GitHub org/user account).
    */
   @Get('github')
-  @RequireConnection()
   async listGithubRepos(
     @CurrentUser('id') userId: string,
-    @Query() query: GithubRepoQueryDto,
+    @Query() query: GithubRepoQueryDto & { connectionId?: string },
   ) {
     const forceRefresh = query.force === 'true';
-    const allRepos = await this.githubClientService.getRepositories(
-      userId,
-      forceRefresh,
-    );
+
+    let allRepos: any[];
+    if (query.connectionId) {
+      // Scoped: list repos for the specific OAuth connection (GitHub org or user)
+      const { ConnectionsService: ConnSvc } = await import('../connections/connections.service');
+      allRepos = await this.repositoriesService['connectionsService']
+        ?.fetchRemoteRepositoriesForConnection(query.connectionId, userId)
+        ?? await this.githubClientService.getRepositories(userId, forceRefresh);
+    } else {
+      allRepos = await this.githubClientService.getRepositories(userId, forceRefresh);
+    }
 
     // Apply pagination if parameters are provided
     if (query.page || query.limit) {
@@ -143,7 +150,10 @@ export class RepositoriesController {
     @CurrentUser('id') userId: string,
     @Query('organizationId') organizationId?: string,
   ) {
-    const repos = await this.repositoriesService.listImported(userId, organizationId);
+    const repos = await this.repositoriesService.listImported(
+      userId,
+      organizationId,
+    );
     return {
       success: true,
       message: 'Imported repositories retrieved successfully',

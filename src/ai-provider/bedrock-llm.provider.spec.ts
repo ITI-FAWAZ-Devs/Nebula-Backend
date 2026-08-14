@@ -170,10 +170,7 @@ describe('BedrockGatewayLlmProvider', () => {
       const values: Record<string, string | number | string[]> = {
         'aiProvider.sbgApiKey': apiKey,
         'aiProvider.bedrockGatewayBaseUrl': baseUrl,
-        'aiProvider.bedrockLlmModels': [
-          'model-alpha',
-          'model-beta',
-        ],
+        'aiProvider.bedrockLlmModels': ['model-alpha', 'model-beta'],
         'aiProvider.bedrockMaxTokens': 16384,
       };
       return values[key];
@@ -183,9 +180,15 @@ describe('BedrockGatewayLlmProvider', () => {
     global.fetch = fetchMock;
     const provider = buildProvider();
 
-    await expect(provider.generateContent('prompt')).rejects.toThrow('status 502');
+    await expect(provider.generateContent('prompt')).rejects.toThrow(
+      'status 502',
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const modelId = (JSON.parse(fetchMock.mock.calls[0][1].body as string) as { model_id: string }).model_id;
+    const modelId = (
+      JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+        model_id: string;
+      }
+    ).model_id;
     expect(modelId).toBe('model-alpha');
   });
 });

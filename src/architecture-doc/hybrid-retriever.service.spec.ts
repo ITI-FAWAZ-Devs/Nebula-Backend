@@ -32,16 +32,11 @@ describe('HybridRetrieverService', () => {
     getFileNeighborhood: jest.fn(),
   };
 
-  const embedResult = (
-    embedding: number[],
-    fallbackOccurred = false,
-  ) => ({
+  const embedResult = (embedding: number[], fallbackOccurred = false) => ({
     embedding,
     provider: fallbackOccurred ? 'gemini' : 'bedrock',
     dimensions: fallbackOccurred ? 768 : 1024,
-    model: fallbackOccurred
-      ? 'gemini-test-model'
-      : 'bedrock-test-model',
+    model: fallbackOccurred ? 'gemini-test-model' : 'bedrock-test-model',
     latencyMs: 1,
     fallbackOccurred,
   });
@@ -107,7 +102,9 @@ describe('HybridRetrieverService', () => {
 
     it('should perform topic-only lookup', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [['file1', 'file2']],
@@ -169,7 +166,9 @@ describe('HybridRetrieverService', () => {
 
     it('should perform topic-plus-seed lookup', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [['sem-file1']],
@@ -213,7 +212,9 @@ describe('HybridRetrieverService', () => {
 
     it('should collapse duplicate semantic paths to one record', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [['id1', 'id2']],
@@ -241,7 +242,9 @@ describe('HybridRetrieverService', () => {
 
     it('should produce stable output order', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [['id1', 'id2', 'id3']],
@@ -274,7 +277,9 @@ describe('HybridRetrieverService', () => {
 
     it('should include a direct graph neighbor outside semantic results', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [['sem1']],
@@ -320,7 +325,9 @@ describe('HybridRetrieverService', () => {
 
     it('should handle two-hop paths when maxHops is 2', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [['sem1']],
@@ -378,7 +385,9 @@ describe('HybridRetrieverService', () => {
 
     it('should deduplicate graph edges', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [['sem1']],
@@ -421,7 +430,9 @@ describe('HybridRetrieverService', () => {
 
     it('should rank both-signal file ahead of otherwise comparable single-signal file', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [['sem1', 'sem2']],
@@ -469,7 +480,9 @@ describe('HybridRetrieverService', () => {
 
     it('should return empty cluster data', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [['sem1']],
@@ -490,7 +503,9 @@ describe('HybridRetrieverService', () => {
 
     it('should skip graph node without a source path', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [['sem1']],
@@ -544,7 +559,9 @@ describe('HybridRetrieverService', () => {
 
     it('should treat semantic source as empty when its collection is missing', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(false);
       mockNeo4j.getFileNeighborhood.mockResolvedValue({
         nodes: [],
@@ -589,7 +606,9 @@ describe('HybridRetrieverService', () => {
 
     it('should set noEvidence true when both sources are available but return no results', async () => {
       mockPrisma.repository.findUnique.mockResolvedValue({ id: repositoryId });
-      mockAiProvider.embedString.mockResolvedValue(embedResult([0.1, 0.2, 0.3]));
+      mockAiProvider.embedString.mockResolvedValue(
+        embedResult([0.1, 0.2, 0.3]),
+      );
       mockChroma.collectionExists.mockResolvedValue(true);
       mockChroma.queryCollection.mockResolvedValue({
         ids: [[]],

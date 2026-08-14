@@ -8,7 +8,7 @@ import {
   CanActivate,
 } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
-import * as request from 'supertest';
+import request from 'supertest';
 import { App } from 'supertest/types';
 import { PrismaClient, DocStatus, RepositoryStatus } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';

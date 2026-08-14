@@ -32,28 +32,16 @@ export class GithubAdapter implements IProviderAdapter {
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
       const message = errorBody?.message || 'GitHub token validation failed';
-      this.logger.warn(
-        `GitHub token validation failed: ${response.status} ${message}`,
-      );
-      throw new BadRequestException(
-        'Invalid GitHub token. Please check it and try again.',
-      );
+      this.logger.warn(`GitHub token validation failed: ${response.status} ${message}`);
+      throw new BadRequestException('Invalid GitHub token. Please check it and try again.');
     }
 
-    const userData = (await response.json().catch(() => ({}))) as {
-      login?: string;
-    };
+    const userData = (await response.json().catch(() => ({}))) as { login?: string };
     const scopeHeader = response.headers.get('x-oauth-scopes') || '';
     const scopes = scopeHeader
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-
-    if (!scopes.includes('repo')) {
-      throw new BadRequestException(
-        'The token must have the "repo" scope. Please generate a new token with the correct permissions.',
-      );
-    }
 
     return {
       valid: true,
@@ -61,6 +49,53 @@ export class GithubAdapter implements IProviderAdapter {
       lastValidatedAt: new Date(),
       providerUsername: userData.login,
     };
+  }
+
+  /** Fetches repositories for a specific GitHub organization. */
+  async fetchOrgRepositories(rawToken: string, orgLogin: string): Promise<RemoteRepository[]> {
+    const allRepos: RemoteRepository[] = [];
+    let page = 1;
+    const perPage = 100;
+    let hasNextPage = true;
+
+    while (hasNextPage) {
+      const response = await fetch(
+        `https://api.github.com/orgs/${encodeURIComponent(orgLogin)}/repos?per_page=${perPage}&page=${page}&type=all`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${rawToken}`,
+            Accept: 'application/vnd.github+json',
+            'User-Agent': 'Nebula-Backend',
+          },
+        },
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) throw new UnauthorizedException('GitHub token expired or invalid.');
+        break;
+      }
+
+      const reposData = (await response.json()) as any[];
+      if (!Array.isArray(reposData) || reposData.length === 0) break;
+
+      allRepos.push(
+        ...reposData.map((r) => ({
+          providerRepoId: String(r.id),
+          name: r.name,
+          owner: r.owner?.login || orgLogin,
+          defaultBranch: r.default_branch || 'main',
+          isPrivate: r.private === true,
+          cloneUrl: r.clone_url,
+        })),
+      );
+
+      const linkHeader = response.headers.get('link');
+      hasNextPage = !!(linkHeader?.includes('rel="next"') && reposData.length === perPage);
+      if (hasNextPage) page++;
+    }
+
+    return allRepos;
   }
 
   async fetchUserRepositories(rawToken: string): Promise<RemoteRepository[]> {

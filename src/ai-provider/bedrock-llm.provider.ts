@@ -121,8 +121,8 @@ export class BedrockGatewayLlmProvider implements LlmProvider {
     const models = options?.overrideModel
       ? [options.overrideModel]
       : tier === 'strong'
-      ? [this.strongModel]
-      : this.models;
+        ? [this.strongModel]
+        : this.models;
 
     if (!this.apiKey || !this.baseUrl) {
       throw new Error(

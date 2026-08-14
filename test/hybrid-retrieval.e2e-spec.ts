@@ -9,6 +9,7 @@ import { Pool } from 'pg';
 import { HybridRetrieverService } from '../src/architecture-doc/hybrid-retriever.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { GeminiService } from '../src/gemini/gemini.service';
+import { AiProviderService } from '../src/ai-provider/ai-provider.service';
 import { ChromaService } from '../src/chroma/chroma.service';
 import { Neo4jService } from '../src/neo4j/neo4j.service';
 
@@ -55,6 +56,20 @@ describe('HybridRetrieval (e2e)', () => {
         ChromaService,
         Neo4jService,
         HybridRetrieverService,
+        {
+          provide: AiProviderService,
+          useValue: {
+            embedString: jest.fn().mockResolvedValue({
+              provider: 'gemini',
+              model: 'gemini-embedding-001',
+              dimensions: 768,
+              embedding: [0.1, 0.2, 0.3],
+              fallbackOccurred: false,
+            }),
+            embedMany: jest.fn(),
+            generateContent: jest.fn(),
+          },
+        },
         { provide: ConfigService, useValue: mockConfigService },
       ],
     })

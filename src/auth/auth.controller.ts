@@ -21,11 +21,14 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { RegisterFromInviteDto } from './dto/register-from-invite.dto';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { GithubAuthGuard } from './guards/github-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ConnectionsService } from '../connections/connections.service';
+import { ConnectionProvider } from '@prisma/client';
 
 @Controller('auth')
 export class AuthController {
@@ -34,6 +37,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
+    private readonly connectionsService: ConnectionsService,
   ) {
     this.isProduction =
       this.configService.get<string>('app.nodeEnv') === 'production';
@@ -44,6 +48,24 @@ export class AuthController {
   @Post('register')
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('register-from-invite')
+  @HttpCode(HttpStatus.OK)
+  async registerFromInvite(
+    @Body() dto: RegisterFromInviteDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.registerFromInvite(dto);
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
+
+    return {
+      success: true,
+      message: 'Registration complete. Welcome to Nebula!',
+      data: { user: result.user },
+    };
   }
 
   @Public()
@@ -235,19 +257,178 @@ export class AuthController {
   @UseGuards(GithubAuthGuard)
   @Get('github')
   async githubLogin() {
-    // Guard initiates the OAuth redirect
+    // Guard initiates the OAuth redirect (login flow)
   }
 
+  /**
+   * GET /auth/github/connect
+   * Initiates the GitHub connect flow by manually constructing the GitHub
+   * OAuth authorization URL with broader scopes (repo, read:org) and the
+   * SAME registered callbackURL as the login flow.
+   * The `state` query param (base64 JSON) carries { purpose, userId, workspace, organizationId }.
+   */
+  @Public()
+  @Get('github/connect')
+  async githubConnectInitiate(
+    @Query('state') state: string,
+    @Res() res: Response,
+  ) {
+    const clientId = this.configService.get<string>('github.clientId');
+    const callbackUrl = this.configService.get<string>('github.callbackUrl');
+    const scopes = 'repo read:org user:email';
+
+    const params = new URLSearchParams({
+      client_id: clientId!,
+      redirect_uri: callbackUrl!,
+      scope: scopes,
+      state: state ?? '',
+    });
+
+    (res as any).redirect(
+      `https://github.com/login/oauth/authorize?${params.toString()}`,
+    );
+  }
+
+  /**
+   * GET /auth/github/callback
+   * Single callback for both login and connect flows.
+   *
+   * Login flow (no state / state.purpose = 'login'):
+   *   Creates or fetches the Nebula user, issues tokens, sets cookies.
+   *
+   * Connect flow (state.purpose = 'connect'):
+   *   Decodes userId from state, stores token, and redirects to the org-picker.
+   *   The state must include `{ purpose, userId, workspace, organizationId }`.
+   */
   @Public()
   @UseGuards(GithubAuthGuard)
   @Get('github/callback')
   async githubCallback(
     @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
+    @Res() res: Response,
   ) {
+    const profile = (req as any).user as {
+      id: string;
+      username: string;
+      displayName: string;
+      email: string | null;
+      avatar: string | null;
+      accessToken: string;
+      state: Record<string, any>;
+    };
+
+    const { state, accessToken, username, id: githubId } = profile;
+
+    if (state?.purpose === 'connect') {
+      // ── Connect flow ──
+      const frontendUrl = this.configService.get<string>('app.frontendUrl');
+
+      const [{ user: ghUser, orgs }, existingConns] = await Promise.all([
+        this.connectionsService.listGithubOrgsForToken(accessToken),
+        state.userId
+          ? (state.workspace === 'organization' && state.organizationId
+              ? this.connectionsService.listOrgConnections(state.organizationId)
+              : this.connectionsService.listUserConnections(state.userId))
+          : Promise.resolve([]),
+      ]);
+
+      const existingLogins: string[] = (existingConns as any[])
+        .map((c) => c.providerAccountLogin)
+        .filter(Boolean);
+
+      const pickerData = encodeURIComponent(
+        Buffer.from(
+          JSON.stringify({
+            accessToken,
+            githubLogin: username,
+            githubId,
+            user: ghUser,
+            orgs,
+            userId: state.userId ?? null,
+            workspace: state.workspace ?? 'personal',
+            organizationId: state.organizationId ?? null,
+            existingLogins,
+            returnTo: state.returnTo ?? null,
+          }),
+        ).toString('base64'),
+      );
+
+      return (res as any).redirect(`${frontendUrl}/github/connect/select?data=${pickerData}`);
+    }
+
+    // ── Login flow ──
     await this.handleOAuthCallback(req, res, (u) =>
       this.authService.handleGithubLogin(u),
     );
+  }
+
+  /**
+   * POST /auth/github/connect/select
+   * Saves the user's selected GitHub accounts/orgs as Connections.
+   * `userId` is taken from the JWT if available, falling back to the body
+   * (the connect flow embeds userId in the picker state since the callback is public).
+   */
+  @Post('github/connect/select')
+  @HttpCode(HttpStatus.CREATED)
+  async githubConnectSelect(
+    @CurrentUser('id') jwtUserId: string | undefined,
+    @Body() body: {
+      accessToken: string;
+      userId?: string;
+      selections: Array<{ login: string; id: string; type: 'USER' | 'ORGANIZATION' }>;
+      workspace: 'personal' | 'organization';
+      organizationId?: string | null;
+    },
+  ) {
+    const userId = jwtUserId ?? body.userId;
+    if (!userId) throw new Error('User ID is required');
+
+    const { accessToken, selections, workspace, organizationId } = body;
+    const scopes = ['repo', 'read:org', 'user:email'];
+    const orgId = workspace === 'organization' ? organizationId : null;
+
+    const created = await Promise.all(
+      selections.map((sel) =>
+        this.connectionsService.storeOAuthToken({
+          userId,
+          orgId,
+          rawToken: accessToken,
+          provider: ConnectionProvider.GITHUB,
+          login: sel.login,
+          githubId: sel.id,
+          accountType: sel.type,
+          scopes,
+        }),
+      ),
+    );
+
+    return {
+      success: true,
+      message: 'GitHub connections saved successfully',
+      data: created,
+    };
+  }
+
+  /**
+   * GET /auth/github/orgs
+   * Lists GitHub orgs accessible by the user's stored connections.
+   */
+  @Get('github/orgs')
+  async listGithubOrgs(@CurrentUser('id') userId: string) {
+    const connections = await this.connectionsService.listUserConnections(userId);
+    const githubConns = connections.filter((c) => c.provider === 'GITHUB');
+
+    return {
+      success: true,
+      message: 'GitHub connections retrieved',
+      data: githubConns.map((c) => ({
+        connectionId: c.id,
+        login: (c as any).providerAccountLogin,
+        githubId: (c as any).providerAccountId,
+        type: (c as any).providerAccountType,
+        label: c.label,
+      })),
+    };
   }
 
   // ── Google OAuth ──

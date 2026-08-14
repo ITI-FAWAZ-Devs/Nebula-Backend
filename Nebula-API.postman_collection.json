@@ -55,6 +55,11 @@
 			"key": "sessionId",
 			"value": "",
 			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -1327,6 +1332,569 @@
 								"exec": [
 									"pm.test('Message posted (200)', function () {",
 									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Admin",
+			"description": "Admin-only endpoints. Every request requires the caller to be an authenticated user with the `ADMIN` role.\n\n## Access Control\n- Authenticated **ADMIN** user → `200` OK\n- Authenticated **normal user** → `403` Forbidden\n- **Unauthenticated** request → `401` Unauthorized\n\n## Setup\n1. Log in with an admin account (see Auth - Public → Login)\n2. Use **List Users** → copy a user's `id` into the `userId` collection variable\n3. Use **Get User Details**, **Update User Role**, **Delete User** to manage the account",
+			"item": [
+				{
+					"name": "List Users",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/users?page=1&pageSize=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"users"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (optional, default 1)"
+								},
+								{
+									"key": "pageSize",
+									"value": "20",
+									"description": "Items per page (optional, default 20, max 100)"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Optional search term (matches email or full name)",
+									"disabled": true
+								},
+								{
+									"key": "role",
+									"value": "",
+									"description": "Optional role filter. Exact uppercase enum value: USER or ADMIN (empty role= is rejected)",
+									"disabled": true
+								}
+							]
+						},
+						"description": "List all users with pagination and optional search. **ADMIN only.**\n\n**Query params:**\n- `page` (optional): Page number (default 1)\n- `pageSize` (optional): Items per page (default 20, max 100)\n- `search` (optional): Partial match on `email` or `fullName`\n- `role` (optional): Filter by role — exact uppercase enum value `USER` or `ADMIN`. An empty `role=` param is rejected by validation, so this param is disabled by default.\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"items\": [\n      {\n        \"id\": \"uuid\",\n        \"email\": \"user@example.com\",\n        \"fullName\": \"Jane Doe\",\n        \"role\": \"USER\",\n        \"isEmailVerified\": true,\n        \"subscriptionTier\": \"FREE\",\n        \"githubConnected\": true,\n        \"repositoriesCount\": 2,\n        \"usageLogsCount\": 5\n      }\n    ],\n    \"pagination\": {\n      \"page\": 1,\n      \"pageSize\": 20,\n      \"total\": 42,\n      \"totalPages\": 3\n    }\n  }\n}\n```\n\nCopy a user's `id` into the `userId` collection variable to use in **Get User Details**, **Update User Role**, and **Delete User**."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Users listed (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('items');",
+									"    pm.expect(json.data).to.have.property('pagination');",
+									"    pm.expect(json.data.items).to.be.an('array');",
+									"});",
+									"",
+									"pm.test('Normal user is denied (403)', function () {",
+									"    if (pm.response.code === 403) {",
+									"        console.log('⚠️ Current account is not an ADMIN');",
+									"    }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get Platform Stats",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/stats",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"stats"
+							]
+						},
+						"description": "Return high-level platform stats. **ADMIN only.**\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"users\": 42,\n    \"repositories\": 17,\n    \"generatedDocs\": 9,\n    \"docSections\": 84,\n    \"usageLogs\": 120\n  }\n}\n```"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Stats retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('users');",
+									"    pm.expect(json.data).to.have.property('repositories');",
+									"    pm.expect(json.data).to.have.property('generatedDocs');",
+									"    pm.expect(json.data).to.have.property('docSections');",
+									"    pm.expect(json.data).to.have.property('usageLogs');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get Dashboard Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/dashboard/stats",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"dashboard",
+								"stats"
+							]
+						},
+						"description": "Return platform-level statistics for the Admin Dashboard. **ADMIN only.**\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"totalUsers\": 42,\n    \"activeUsers\": 31,\n    \"totalImportedRepositories\": 17,\n    \"totalDocumentationJobs\": 9,\n    \"successfulDocumentationJobs\": 7,\n    \"failedDocumentationJobs\": 2\n  }\n}\n```\n\n- `activeUsers` counts users with `isEmailVerified = true`\n- `successfulDocumentationJobs` = jobs with status `COMPLETED`\n- `failedDocumentationJobs` = jobs with status `FAILED`"
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Dashboard stats retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('totalUsers');",
+									"    pm.expect(json.data).to.have.property('activeUsers');",
+									"    pm.expect(json.data).to.have.property('totalImportedRepositories');",
+									"    pm.expect(json.data).to.have.property('totalDocumentationJobs');",
+									"    pm.expect(json.data).to.have.property('successfulDocumentationJobs');",
+									"    pm.expect(json.data).to.have.property('failedDocumentationJobs');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Update User Role",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"role\": \"ADMIN\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/users/{{userId}}/role",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"users",
+								"{{userId}}",
+								"role"
+							]
+						},
+						"description": "Promote or demote a user's role. **ADMIN only.**\n\n**Body:**\n- `role` (required): `USER` or `ADMIN`\n\nSet the `userId` collection variable to the target user's ID (from **List Users**).\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"uuid\",\n    \"email\": \"user@example.com\",\n    \"fullName\": \"Jane Doe\",\n    \"role\": \"ADMIN\",\n    \"updatedAt\": \"2026-08-12T10:00:00.000Z\"\n  }\n}\n```\n\n⚠️ Returns `404` if the user does not exist, and `400` if the role is invalid."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Role updated (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('role');",
+									"    pm.expect(json.data.role).to.be.oneOf(['USER', 'ADMIN']);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get User Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/users/{{userId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"users",
+								"{{userId}}"
+							]
+						},
+						"description": "Return aggregated details for a single user. **ADMIN only.**\n\nSet the `userId` collection variable to the target user's ID (from **List Users**).\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"uuid\",\n    \"email\": \"user@example.com\",\n    \"fullName\": \"Jane Doe\",\n    \"role\": \"USER\",\n    \"isEmailVerified\": true,\n    \"subscriptionTier\": \"FREE\",\n    \"githubConnected\": true,\n    \"repositoriesCount\": 2,\n    \"usageLogsCount\": 5,\n    \"totalGenerationsUsed\": 12,\n    \"generationsUsedThisPeriod\": 2,\n    \"organizationsCount\": 1,\n    \"ownedOrganizationsCount\": 0,\n    \"lastUsageAt\": \"2026-08-01T10:00:00.000Z\",\n    \"accounts\": [\n      {\n        \"provider\": \"GITHUB\",\n        \"providerUsername\": \"janedoe\"\n      }\n    ],\n    \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n    \"updatedAt\": \"2026-08-12T10:00:00.000Z\"\n  }\n}\n```\n\nReturns `404` if the user does not exist. Sensitive fields (`password`, refresh tokens, OAuth tokens) are never returned."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('User details retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('id');",
+									"    pm.expect(json.data).to.have.property('email');",
+									"});",
+									"",
+									"pm.test('Sensitive fields excluded', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data).to.not.have.property('password');",
+									"    pm.expect(json.data).to.not.have.property('refreshToken');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Delete User",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/users/{{userId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"users",
+								"{{userId}}"
+							]
+						},
+						"description": "Delete a user account. **ADMIN only.**\n\nPermanently removes the user and all records tied to their account (tokens, OAuth links, usage logs, memberships).\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"message\": \"User deleted successfully\"\n}\n```\n\n⚠️ Returns `409 Conflict` when the user owns imported repositories or organizations, when the target is the caller's own account, or when the target is the last remaining admin."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('User deleted (200) or blocked (409)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "List Repositories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/repositories?page=1&pageSize=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"repositories"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (optional, default 1)"
+								},
+								{
+									"key": "pageSize",
+									"value": "20",
+									"description": "Items per page (optional, default 20, max 100)"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Optional search term (matches repository name, owner, or GitHub repo id)",
+									"disabled": true
+								},
+								{
+									"key": "repositoryStatus",
+									"value": "",
+									"description": "Optional filter. Exact uppercase enum value: IMPORTED | PROCESSING | READY | FAILED (empty value is rejected)",
+									"disabled": true
+								},
+								{
+									"key": "documentationStatus",
+									"value": "",
+									"description": "Optional filter. Exact uppercase DocStatus value: PENDING | RETRIEVING | GENERATING | VERIFYING | COMPLETED | FAILED (empty value is rejected)",
+									"disabled": true
+								},
+								{
+									"key": "owner",
+									"value": "",
+									"description": "Optional filter. GitHub owner/organization name",
+									"disabled": true
+								},
+								{
+									"key": "userId",
+									"value": "",
+									"description": "Optional filter. UUID of the user who imported the repository",
+									"disabled": true
+								},
+								{
+									"key": "sortBy",
+									"value": "createdAt",
+									"description": "Optional sort key: createdAt | name | updatedAt | lastDocumentedAt (default createdAt)",
+									"disabled": true
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc",
+									"description": "Optional sort order: asc | desc (default desc)",
+									"disabled": true
+								}
+							]
+						},
+						"description": "List all repositories platform-wide with pagination, search, filtering and sorting. **ADMIN only.**\n\n**Query params:**\n- `page` (optional): Page number (default 1)\n- `pageSize` (optional): Items per page (default 20, max 100)\n- `search` (optional): Partial match on `name`, `owner`, or `githubRepoId`\n- `repositoryStatus` (optional): Filter by `RepositoryStatus` enum value\n- `documentationStatus` (optional): Filter by architecture doc status (`DocStatus` enum value)\n- `owner` (optional): Filter by GitHub owner/organization name\n- `userId` (optional): Filter by importing user's UUID\n- `sortBy` (optional): `createdAt` | `name` | `updatedAt` | `lastDocumentedAt` (default `createdAt`)\n- `sortOrder` (optional): `asc` | `desc` (default `desc`)\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"items\": [\n      {\n        \"id\": \"uuid\",\n        \"name\": \"nebula\",\n        \"githubUrl\": \"https://github.com/ayman/nebula\",\n        \"owner\": \"ayman\",\n        \"isPrivate\": false,\n        \"user\": {\n          \"id\": \"uuid\",\n          \"email\": \"user@example.com\",\n          \"fullName\": \"User One\",\n          \"avatar\": null\n        },\n        \"importDate\": \"2026-08-01T00:00:00.000Z\",\n        \"repositoryStatus\": \"READY\",\n        \"documentationStatus\": \"COMPLETED\",\n        \"lastDocumentationGeneration\": \"2026-08-02T00:00:00.000Z\",\n        \"lastArchDocGeneratedAt\": \"2026-08-02T00:00:00.000Z\",\n        \"qaRequestsCount\": 3,\n        \"usageLogsCount\": 5\n      }\n    ],\n    \"pagination\": {\n      \"page\": 1,\n      \"pageSize\": 20,\n      \"total\": 42,\n      \"totalPages\": 3\n    }\n  }\n}\n```\n\n`documentationStatus` reflects the latest architecture-doc version or `NOT_GENERATED`. Sensitive fields (`cloneUrl`, `localPath`, tokens) are never returned.\n\nCopy a repository's `id` into the `repositoryId` collection variable to use in **Get Repository Details**, **Delete Repository**, and **Regenerate Repository Documentation**."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Repositories listed (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('items');",
+									"    pm.expect(json.data).to.have.property('pagination');",
+									"    pm.expect(json.data.items).to.be.an('array');",
+									"});",
+									"",
+									"pm.test('Sensitive fields excluded', function () {",
+									"    const json = pm.response.json();",
+									"    if (json.data && json.data.items && json.data.items.length > 0) {",
+									"        pm.expect(json.data.items[0]).to.not.have.property('cloneUrl');",
+									"        pm.expect(json.data.items[0]).to.not.have.property('localPath');",
+									"    }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get Repository Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/repositories/{{repositoryId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"repositories",
+								"{{repositoryId}}"
+							]
+						},
+						"description": "Return detailed, non-sensitive information for a single repository including documentation/analysis activity. **ADMIN only.**\n\nSet the `repositoryId` collection variable to the target repository's ID (from **List Repositories**).\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"uuid\",\n    \"name\": \"nebula\",\n    \"githubUrl\": \"https://github.com/ayman/nebula\",\n    \"githubRepoId\": \"123456789\",\n    \"owner\": \"ayman\",\n    \"defaultBranch\": \"main\",\n    \"isPrivate\": false,\n    \"user\": {\n      \"id\": \"uuid\",\n      \"email\": \"user@example.com\",\n      \"fullName\": \"User One\",\n      \"avatar\": null\n    },\n    \"organization\": null,\n    \"repositoryStatus\": \"READY\",\n    \"documentationStatus\": \"COMPLETED\",\n    \"importDate\": \"2026-08-01T00:00:00.000Z\",\n    \"lastDocumentationGeneration\": \"2026-08-02T00:00:00.000Z\",\n    \"lastIndexedCommit\": \"abc123\",\n    \"documentedCommit\": \"abc123\",\n    \"latestDocumentationJob\": null,\n    \"latestGeneratedDoc\": {\n      \"id\": \"doc-uuid\",\n      \"version\": 2,\n      \"status\": \"COMPLETED\",\n      \"commitSha\": \"abc123\",\n      \"generatedAt\": \"2026-08-02T00:00:00.000Z\",\n      \"verificationScore\": 0.94,\n      \"triggeredByUserId\": \"uuid\",\n      \"createdAt\": \"2026-08-02T00:00:00.000Z\"\n    },\n    \"generatedDocVersions\": [],\n    \"documentationJobsCount\": 0,\n    \"analysisJobsCount\": 1,\n    \"usageLogsCount\": 5,\n    \"qaRequestsCount\": 3,\n    \"createdAt\": \"2026-08-01T00:00:00.000Z\",\n    \"updatedAt\": \"2026-08-02T00:00:00.000Z\"\n  }\n}\n```\n\nReturns `404` if the repository does not exist. Sensitive fields (`cloneUrl`, `localPath`, OAuth tokens) are never returned."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Repository details retrieved (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('id');",
+									"    pm.expect(json.data).to.have.property('githubUrl');",
+									"    pm.expect(json.data).to.have.property('documentationStatus');",
+									"});",
+									"",
+									"pm.test('Sensitive fields excluded', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.data).to.not.have.property('cloneUrl');",
+									"    pm.expect(json.data).to.not.have.property('localPath');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Delete Repository",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/repositories/{{repositoryId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"repositories",
+								"{{repositoryId}}"
+							]
+						},
+						"description": "Delete a repository and all of its derived data. **ADMIN only.**\n\nPermanently removes the repository row and cleans up: usage logs, documentation jobs, generated docs/sections, ChromaDB embeddings, the Neo4j knowledge graph, and the local clone on disk.\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"message\": \"Repository deleted successfully\",\n  \"data\": {\n    \"id\": \"uuid\",\n    \"name\": \"nebula\"\n  }\n}\n```\n\n⚠️ Returns `404` if the repository does not exist, and `409 Conflict` while documentation or analysis jobs are still in flight."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Repository deleted (200) or blocked (409)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Regenerate Repository Documentation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/repositories/{{repositoryId}}/documentation/regenerate",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"repositories",
+								"{{repositoryId}}",
+								"documentation",
+								"regenerate"
+							]
+						},
+						"description": "Trigger regeneration of the latest architecture document for a repository through the existing drafting pipeline. **ADMIN only.**\n\nSet the `repositoryId` collection variable to the target repository's ID (from **List Repositories**).\n\n**Response (200):**\n```json\n{\n  \"success\": true,\n  \"message\": \"Documentation regeneration request processed\",\n  \"data\": {\n    \"needsRegeneration\": true,\n    \"docId\": \"uuid\",\n    \"jobId\": \"uuid\",\n    \"version\": 3,\n    \"status\": \"PENDING\"\n  }\n}\n```\n\nReturns `400` when there is no completed architecture document to regenerate, and `404` if the repository does not exist."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Regeneration accepted (200)', function () {",
+									"    pm.response.to.have.status(200);",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.success).to.be.true;",
+									"    pm.expect(json.data).to.have.property('needsRegeneration');",
 									"});"
 								]
 							}
