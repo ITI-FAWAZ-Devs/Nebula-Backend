@@ -89,6 +89,7 @@ model User {
   teamMemberships      TeamMember[]
   repositoryAccess     RepositoryMember[]
   auditLogs            AuditLog[]
+  conversationThreads  ConversationThread[]
 
   @@map("users")
 }

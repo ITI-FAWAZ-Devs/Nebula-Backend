@@ -16,8 +16,10 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AdminService } from './admin.service';
 import { AdminRepositoriesService } from './admin-repositories.service';
+import { AdminDocumentationJobsService } from './admin-documentation-jobs.service';
 import { AdminListUsersQueryDto } from './dto/admin-list-users-query.dto';
 import { AdminListRepositoriesQueryDto } from './dto/admin-list-repositories-query.dto';
+import { AdminListDocumentationJobsQueryDto } from './dto/admin-list-documentation-jobs-query.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 
 @Controller('admin')
@@ -26,6 +28,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly adminRepositoriesService: AdminRepositoriesService,
+    private readonly adminDocumentationJobsService: AdminDocumentationJobsService,
   ) {}
 
   /**
@@ -195,6 +198,59 @@ export class AdminController {
       success: true,
       message: 'Documentation regeneration request processed',
       data: result,
+    };
+  }
+
+  /**
+   * GET /admin/documentation-jobs
+   * Lists documentation generation jobs platform-wide with pagination, optional
+   * search (repository name/owner, user name/email) and status filter. ADMIN only.
+   */
+  @Get('documentation-jobs')
+  async listDocumentationJobs(
+    @Query() query: AdminListDocumentationJobsQueryDto,
+  ) {
+    const result = await this.adminDocumentationJobsService.listJobs(query);
+    return {
+      success: true,
+      message: 'Documentation jobs retrieved successfully',
+      data: result,
+    };
+  }
+
+  /**
+   * GET /admin/documentation-jobs/:id
+   * Returns a single documentation job with repository and user details. ADMIN only.
+   */
+  @Get('documentation-jobs/:id')
+  async getDocumentationJobById(@Param('id', ParseUUIDPipe) id: string) {
+    const job = await this.adminDocumentationJobsService.getJobById(id);
+    return {
+      success: true,
+      message: 'Documentation job retrieved successfully',
+      data: job,
+    };
+  }
+
+  /**
+   * POST /admin/documentation-jobs/:id/retry
+   * Re-enqueues a failed documentation job so it resumes from its checkpoint.
+   * Only FAILED jobs can be retried. ADMIN only.
+   */
+  @Post('documentation-jobs/:id/retry')
+  @HttpCode(HttpStatus.OK)
+  async retryDocumentationJob(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') requestingAdminId: string,
+  ) {
+    const job = await this.adminDocumentationJobsService.retryJob(
+      id,
+      requestingAdminId,
+    );
+    return {
+      success: true,
+      message: 'Documentation job retry queued',
+      data: job,
     };
   }
 }
