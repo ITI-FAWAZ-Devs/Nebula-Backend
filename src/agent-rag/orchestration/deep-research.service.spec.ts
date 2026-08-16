@@ -6,6 +6,7 @@ import { ExecutorService } from './executor.service';
 import { ContextBuilderService } from './context-builder.service';
 import { SynthesizerService } from './synthesizer.service';
 import { FollowupGeneratorService } from './followup-generator.service';
+import { CitationSnippetService } from '../retrieval/citation-snippet.service';
 
 describe('DeepResearchService', () => {
   let service: DeepResearchService;
@@ -15,6 +16,7 @@ describe('DeepResearchService', () => {
   let contextBuilderMock: jest.Mocked<Partial<ContextBuilderService>>;
   let synthesizerMock: jest.Mocked<Partial<SynthesizerService>>;
   let followupGeneratorMock: jest.Mocked<Partial<FollowupGeneratorService>>;
+  let snippetsMock: jest.Mocked<Partial<CitationSnippetService>>;
 
   beforeEach(async () => {
     geminiMock = {
@@ -37,6 +39,7 @@ describe('DeepResearchService', () => {
           },
         ],
         toolsUsed: ['hybrid_search'],
+        webResults: [],
       }),
     };
     contextBuilderMock = {
@@ -71,6 +74,10 @@ describe('DeepResearchService', () => {
     followupGeneratorMock = {
       generate: jest.fn().mockResolvedValue(['Next step 1?', 'Next step 2?']),
     };
+    snippetsMock = {
+      enrich: jest.fn().mockImplementation(async (_id, citations) => citations),
+      merge: jest.fn().mockImplementation((fromSynth) => fromSynth),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -81,6 +88,7 @@ describe('DeepResearchService', () => {
         { provide: ContextBuilderService, useValue: contextBuilderMock },
         { provide: SynthesizerService, useValue: synthesizerMock },
         { provide: FollowupGeneratorService, useValue: followupGeneratorMock },
+        { provide: CitationSnippetService, useValue: snippetsMock },
       ],
     }).compile();
 
@@ -100,6 +108,7 @@ describe('DeepResearchService', () => {
     const eventTypes = events.map((e) => e.event);
     expect(eventTypes).toContain('mode');
     expect(eventTypes).toContain('progress');
+    expect(eventTypes).toContain('scanning');
     expect(eventTypes).toContain('citation');
     expect(eventTypes).toContain('token');
     expect(eventTypes).toContain('done');

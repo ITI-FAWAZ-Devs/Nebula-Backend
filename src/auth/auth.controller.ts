@@ -9,6 +9,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
@@ -29,6 +30,8 @@ import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ConnectionsService } from '../connections/connections.service';
 import { ConnectionProvider } from '@prisma/client';
+import { GithubConnectPendingStore } from './github-connect-pending.store';
+import { SkipResponseIntercept } from '../common/decorators/skip-response-intercept.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -38,6 +41,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
     private readonly connectionsService: ConnectionsService,
+    private readonly pendingStore: GithubConnectPendingStore,
   ) {
     this.isProduction =
       this.configService.get<string>('app.nodeEnv') === 'production';
@@ -268,6 +272,7 @@ export class AuthController {
    * The `state` query param (base64 JSON) carries { purpose, userId, workspace, organizationId }.
    */
   @Public()
+  @SkipResponseIntercept()
   @Get('github/connect')
   async githubConnectInitiate(
     @Query('state') state: string,
@@ -276,6 +281,16 @@ export class AuthController {
     const clientId = this.configService.get<string>('github.clientId');
     const callbackUrl = this.configService.get<string>('github.callbackUrl');
     const scopes = 'repo read:org user:email';
+
+    if (state) {
+      res.cookie('nebula_github_connect_state', state, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: this.isProduction,
+        maxAge: 10 * 60 * 1000,
+        path: '/',
+      });
+    }
 
     const params = new URLSearchParams({
       client_id: clientId!,
@@ -301,6 +316,7 @@ export class AuthController {
    *   The state must include `{ purpose, userId, workspace, organizationId }`.
    */
   @Public()
+  @SkipResponseIntercept()
   @UseGuards(GithubAuthGuard)
   @Get('github/callback')
   async githubCallback(
@@ -317,7 +333,8 @@ export class AuthController {
       state: Record<string, any>;
     };
 
-    const { state, accessToken, username, id: githubId } = profile;
+    const { state: profileState, accessToken, username, id: githubId } = profile;
+    const state = this.resolveConnectState(req, profileState);
 
     if (state?.purpose === 'connect') {
       // ── Connect flow ──
@@ -336,30 +353,49 @@ export class AuthController {
         .map((c) => c.providerAccountLogin)
         .filter(Boolean);
 
-      const pickerData = encodeURIComponent(
-        Buffer.from(
-          JSON.stringify({
-            accessToken,
-            githubLogin: username,
-            githubId,
-            user: ghUser,
-            orgs,
-            userId: state.userId ?? null,
-            workspace: state.workspace ?? 'personal',
-            organizationId: state.organizationId ?? null,
-            existingLogins,
-            returnTo: state.returnTo ?? null,
-          }),
-        ).toString('base64'),
-      );
+      const sid = this.pendingStore.set({
+        accessToken,
+        githubLogin: username,
+        githubId,
+        user: ghUser,
+        orgs,
+        userId: state.userId ?? null,
+        workspace: state.workspace ?? 'personal',
+        organizationId: state.organizationId ?? null,
+        existingLogins,
+        returnTo: this.safeReturnTo(state.returnTo),
+      });
 
-      return (res as any).redirect(`${frontendUrl}/github/connect/select?data=${pickerData}`);
+      res.clearCookie('nebula_github_connect_state', { path: '/' });
+      return (res as any).redirect(
+        `${frontendUrl}/github/connect/select?sid=${sid}`,
+      );
     }
 
     // ── Login flow ──
     await this.handleOAuthCallback(req, res, (u) =>
       this.authService.handleGithubLogin(u),
     );
+  }
+
+  /**
+   * GET /auth/github/connect/pending
+   * Returns the short-lived GitHub connect picker payload stored after OAuth.
+   * The `sid` is an unguessable one-time capability id so the access token
+   * never has to travel in the redirect URL.
+   */
+  @Public()
+  @Get('github/connect/pending')
+  async getGithubConnectPending(@Query('sid') sid: string) {
+    const payload = sid ? this.pendingStore.get(sid) : null;
+    if (!payload) {
+      throw new NotFoundException('GitHub connect session expired. Please try again.');
+    }
+    return {
+      success: true,
+      message: 'GitHub connect session retrieved',
+      data: payload,
+    };
   }
 
   /**
@@ -378,12 +414,13 @@ export class AuthController {
       selections: Array<{ login: string; id: string; type: 'USER' | 'ORGANIZATION' }>;
       workspace: 'personal' | 'organization';
       organizationId?: string | null;
+      sid?: string;
     },
   ) {
     const userId = jwtUserId ?? body.userId;
     if (!userId) throw new Error('User ID is required');
 
-    const { accessToken, selections, workspace, organizationId } = body;
+    const { accessToken, selections, workspace, organizationId, sid } = body;
     const scopes = ['repo', 'read:org', 'user:email'];
     const orgId = workspace === 'organization' ? organizationId : null;
 
@@ -401,6 +438,8 @@ export class AuthController {
         }),
       ),
     );
+
+    if (sid) this.pendingStore.delete(sid);
 
     return {
       success: true,
@@ -450,6 +489,37 @@ export class AuthController {
     await this.handleOAuthCallback(req, res, (u) =>
       this.authService.handleGoogleLogin(u),
     );
+  }
+
+  private resolveConnectState(
+    req: Request,
+    profileState: Record<string, any> | undefined,
+  ): Record<string, any> {
+    if (profileState?.purpose === 'connect') {
+      return profileState;
+    }
+
+    const raw = (req as any).cookies?.nebula_github_connect_state as
+      | string
+      | undefined;
+    if (!raw) return profileState ?? {};
+
+    try {
+      return JSON.parse(
+        Buffer.from(decodeURIComponent(raw), 'base64').toString(),
+      );
+    } catch {
+      return profileState ?? {};
+    }
+  }
+
+  /** Only allow in-app relative paths so connect never bounces to an external URL. */
+  private safeReturnTo(path: unknown): string {
+    if (typeof path !== 'string') return '/launch';
+    if (!path.startsWith('/') || path.startsWith('//') || path.includes('://')) {
+      return '/launch';
+    }
+    return path;
   }
 
   private async handleOAuthCallback(

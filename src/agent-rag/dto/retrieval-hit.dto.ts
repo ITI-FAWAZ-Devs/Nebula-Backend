@@ -22,4 +22,6 @@ export interface AgentCitation {
   filePath: string;
   lineRange: string | null;
   nodeId: string;
+  /** Bounded source snippet for the right-pane code viewer */
+  snippet?: string;
 }

@@ -23,16 +23,21 @@ Creates a session.
 
 Body:
 ```json
-{ "question": "string" }
+{ "question": "string", "mode": "standard | fast | deep", "model": "optional-model-id" }
 ```
 
 **Content-Type:** `text/event-stream`
 
 | Event | Data |
 |---|---|
-| `token` | string chunk |
-| `citation` | `{ filePath, lineRange, nodeId }` |
-| `done` | `{ answer, citations, citedNodeIds, toolsUsed }` |
+| `mode` | `"fast"` \| `"standard"` \| `"deep"` |
+| `progress` | `{ step, total, subQuestion }` — deep mode only |
+| `scanning` | `{ filePath, tool }` — emitted as retrieval finds files, before tokens |
+| `web_source` | `{ title, url, snippet, score }` — Tavily results, if `web_search` ran |
+| `citation` | `{ filePath, lineRange, nodeId, snippet? }` |
+| `token` | string chunk of the synthesizer answer |
+| `done` | `{ answer, citations, citedNodeIds, toolsUsed, followups? }` |
+| `followups` | `string[]` |
 | `error` | `{ message }` |
 
-Planning and tool execution happen server-side before/during the stream setup; only synthesizer tokens are streamed.
+Retrieval runs server-side. The stream first emits `scanning` (and optional `web_source`) events, then structured `citation` payloads with optional source snippets, then synthesizer `token`s.

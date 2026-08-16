@@ -54,20 +54,16 @@ export class RepositoriesController {
   @Get('github')
   async listGithubRepos(
     @CurrentUser('id') userId: string,
-    @Query() query: GithubRepoQueryDto & { connectionId?: string },
+    @Query() query: GithubRepoQueryDto,
   ) {
     const forceRefresh = query.force === 'true';
 
-    let allRepos: any[];
-    if (query.connectionId) {
-      // Scoped: list repos for the specific OAuth connection (GitHub org or user)
-      const { ConnectionsService: ConnSvc } = await import('../connections/connections.service');
-      allRepos = await this.repositoriesService['connectionsService']
-        ?.fetchRemoteRepositoriesForConnection(query.connectionId, userId)
-        ?? await this.githubClientService.getRepositories(userId, forceRefresh);
-    } else {
-      allRepos = await this.githubClientService.getRepositories(userId, forceRefresh);
-    }
+    const allRepos = await this.githubClientService.getRepositories(
+      userId,
+      forceRefresh,
+      query.connectionId,
+      query.organizationId,
+    );
 
     // Apply pagination if parameters are provided
     if (query.page || query.limit) {

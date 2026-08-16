@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AGENT_PLANNER_MAX_ITERATIONS } from '../agent-rag.constants';
 import { AgentCitation, RetrievalHit } from '../dto/retrieval-hit.dto';
+import { TavilyResult } from '../retrieval/tavily-search.service';
+import { CitationSnippetService } from '../retrieval/citation-snippet.service';
 import { PlannerService } from './planner.service';
 import { ExecutorService } from './executor.service';
 import { ContextBuilderService } from './context-builder.service';
@@ -30,6 +32,7 @@ export class AgentLoopService {
     private readonly followupGenerator: FollowupGeneratorService,
     private readonly answerCache: AnswerCacheService,
     private readonly fastAnswer: FastAnswerService,
+    private readonly snippets: CitationSnippetService,
   ) {}
 
   async run(params: {
@@ -54,6 +57,7 @@ export class AgentLoopService {
     }
 
     const collected: RetrievalHit[] = [];
+    const allWebResults: TavilyResult[] = [];
     const toolsUsed: string[] = [];
     let priorSummary = '';
 
@@ -75,6 +79,7 @@ export class AgentLoopService {
       );
       toolsUsed.push(...executed.toolsUsed);
       collected.push(...executed.hits);
+      allWebResults.push(...(executed.webResults ?? []));
       priorSummary = this.summarizeHits(executed.hits);
 
       if (executed.hits.length === 0 && i > 0) {
@@ -89,15 +94,21 @@ export class AgentLoopService {
       ]);
       toolsUsed.push(...executed.toolsUsed);
       collected.push(...executed.hits);
+      allWebResults.push(...(executed.webResults ?? []));
     }
 
     const { contextText, selectedHits } = this.contextBuilder.build(collected);
-    const { answer, citations } = await this.synthesizer.synthesize(
+    const webContextBlock = this.formatWebContext(allWebResults);
+    const { answer, citations: rawCitations } = await this.synthesizer.synthesize(
       params.question,
-      contextText,
+      contextText + webContextBlock,
       selectedHits,
       params.responseStyle,
       params.model,
+    );
+    const citations = await this.snippets.enrich(
+      params.repositoryId,
+      rawCitations,
     );
 
     const citedNodeIds = [
@@ -146,7 +157,7 @@ export class AgentLoopService {
     responseStyle?: 'text' | 'voice';
     model?: string;
   }): AsyncGenerator<{
-    event: 'mode' | 'token' | 'citation' | 'done' | 'followups' | 'error';
+    event: 'mode' | 'scanning' | 'web_source' | 'token' | 'citation' | 'done' | 'followups' | 'error';
     data: unknown;
   }> {
     try {
@@ -162,6 +173,11 @@ export class AgentLoopService {
             `Answer cache hit for stream question: "${params.question}"`,
           );
           yield { event: 'mode', data: 'standard' };
+          for (const c of cached.citations) {
+            if (c.filePath) {
+              yield { event: 'scanning', data: { filePath: c.filePath, tool: 'cache' } };
+            }
+          }
           for (const c of cached.citations) {
             yield { event: 'citation', data: c };
           }
@@ -188,7 +204,16 @@ export class AgentLoopService {
         );
         if (fastResult) {
           yield { event: 'mode', data: 'fast' };
-          for (const c of fastResult.citations) {
+          const fastCitations = await this.snippets.enrich(
+            params.repositoryId,
+            fastResult.citations,
+          );
+          for (const c of fastCitations) {
+            if (c.filePath) {
+              yield { event: 'scanning', data: { filePath: c.filePath, tool: 'fast_answer_wiki' } };
+            }
+          }
+          for (const c of fastCitations) {
             yield { event: 'citation', data: c };
           }
           yield { event: 'token', data: fastResult.answer };
@@ -199,7 +224,7 @@ export class AgentLoopService {
           yield {
             event: 'done',
             data: {
-              citations: fastResult.citations,
+              citations: fastCitations,
               citedNodeIds: [],
               toolsUsed: ['fast_answer_wiki'],
               answer: fastResult.answer,
@@ -216,8 +241,10 @@ export class AgentLoopService {
       yield { event: 'mode', data: 'standard' };
 
       const collected: RetrievalHit[] = [];
+      const allWebResults: TavilyResult[] = [];
       const toolsUsed: string[] = [];
       let priorSummary = '';
+      const scannedFiles = new Set<string>();
 
       for (let i = 0; i < AGENT_PLANNER_MAX_ITERATIONS; i++) {
         const plan = await this.planner.plan({
@@ -235,7 +262,24 @@ export class AgentLoopService {
         );
         toolsUsed.push(...executed.toolsUsed);
         collected.push(...executed.hits);
+        allWebResults.push(...(executed.webResults ?? []));
         priorSummary = this.summarizeHits(executed.hits);
+
+        const repoTool =
+          executed.toolsUsed.find((t) => t !== 'web_search') ??
+          executed.toolsUsed[0] ??
+          'search';
+        for (const hit of executed.hits) {
+          if (hit.filePath && !scannedFiles.has(hit.filePath)) {
+            scannedFiles.add(hit.filePath);
+            yield { event: 'scanning', data: { filePath: hit.filePath, tool: repoTool } };
+          }
+        }
+
+        for (const web of executed.webResults ?? []) {
+          yield { event: 'web_source', data: web };
+        }
+
         if (executed.hits.length === 0 && i > 0) break;
       }
 
@@ -245,19 +289,31 @@ export class AgentLoopService {
         ]);
         toolsUsed.push(...executed.toolsUsed);
         collected.push(...executed.hits);
+        for (const hit of executed.hits) {
+          if (hit.filePath && !scannedFiles.has(hit.filePath)) {
+            scannedFiles.add(hit.filePath);
+            yield { event: 'scanning', data: { filePath: hit.filePath, tool: 'hybrid_search' } };
+          }
+        }
       }
 
       const { contextText, selectedHits } =
         this.contextBuilder.build(collected);
 
+      const webContextBlock = this.formatWebContext(allWebResults);
+
       let answer = '';
-      let citations = selectedHits
-        .filter((h) => h.filePath)
-        .map((h) => ({
-          filePath: h.filePath as string,
-          lineRange: h.lineRange,
-          nodeId: h.nodeId,
-        }));
+      let citations = await this.snippets.enrich(
+        params.repositoryId,
+        selectedHits
+          .filter((h) => h.filePath)
+          .map((h) => ({
+            filePath: h.filePath as string,
+            lineRange: h.lineRange,
+            nodeId: h.nodeId,
+            snippet: h.content || undefined,
+          })),
+      );
 
       for (const c of citations) {
         yield { event: 'citation', data: c };
@@ -265,7 +321,7 @@ export class AgentLoopService {
 
       for await (const chunk of this.synthesizer.synthesizeStream(
         params.question,
-        contextText,
+        contextText + webContextBlock,
         selectedHits,
         params.responseStyle,
         params.model,
@@ -276,10 +332,10 @@ export class AgentLoopService {
         } else if (chunk.type === 'done') {
           const done = chunk.data as {
             answer: string;
-            citations: typeof citations;
+            citations: AgentCitation[];
           };
           answer = done.answer;
-          citations = done.citations;
+          citations = this.snippets.merge(done.citations, citations);
         }
       }
 
@@ -342,6 +398,16 @@ export class AgentLoopService {
         data: { message: (error as Error).message },
       };
     }
+  }
+
+  private formatWebContext(results: TavilyResult[]): string {
+    if (results.length === 0) return '';
+    return (
+      '\n\n## Web search results (external, not from this repository)\n' +
+      results
+        .map((r, i) => `[Web ${i + 1}] ${r.title} (${r.url})\n${r.snippet}`)
+        .join('\n\n')
+    );
   }
 
   private summarizeHits(hits: RetrievalHit[]): string {

@@ -107,7 +107,7 @@ export class AgentRagController {
 
   /**
    * Plan/execute server-side, then SSE-stream synthesizer tokens.
-   * Events: mode | progress | token | citation | done | followups | error
+   * Events: mode | progress | scanning | web_source | token | citation | done | followups | error
    */
   @Post('sessions/:sessionId/messages')
   @SkipResponseIntercept()

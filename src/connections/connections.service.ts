@@ -151,23 +151,65 @@ export class ConnectionsService {
     userId: string,
     connectionId?: string,
     provider: ConnectionProvider = ConnectionProvider.GITHUB,
+    organizationId?: string,
   ): Promise<RemoteRepository[]> {
-    let conn: Connection | null = null;
     if (connectionId) {
-      conn = await this.getConnectionById(connectionId, userId);
-    } else {
-      conn = await this.findDefaultUserConnection(userId, provider);
+      const conn = await this.getConnectionById(connectionId, userId);
+      if (organizationId && conn.orgId && conn.orgId !== organizationId) {
+        throw new ForbiddenException('You do not have access to this connection');
+      }
+      const decryptedToken = this.encryptionService.decrypt(conn.encryptedToken);
+      return this.listReposForConnection(conn, decryptedToken);
     }
 
-    if (!conn) {
+    const connections = organizationId
+      ? await this.prisma.connection.findMany({
+          where: { orgId: organizationId, provider, isValid: true },
+          orderBy: { createdAt: 'desc' },
+        })
+      : await this.prisma.connection.findMany({
+          where: { userId, provider, isValid: true },
+          orderBy: { createdAt: 'desc' },
+        });
+
+    if (connections.length === 0) {
       throw new BadRequestException(
         `No active ${provider} connection found. Please add a connection first.`,
       );
     }
 
-    const decryptedToken = this.encryptionService.decrypt(conn.encryptedToken);
-    const adapter = this.getAdapter(conn.provider);
-    return adapter.fetchUserRepositories(decryptedToken);
+    const settled = await Promise.allSettled(
+      connections.map(async (conn) => {
+        const decryptedToken = this.encryptionService.decrypt(conn.encryptedToken);
+        return this.listReposForConnection(conn, decryptedToken);
+      }),
+    );
+
+    const merged: RemoteRepository[] = [];
+    const seen = new Set<string>();
+    let tokenError: unknown = null;
+
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        for (const repo of result.value) {
+          if (seen.has(repo.providerRepoId)) continue;
+          seen.add(repo.providerRepoId);
+          merged.push(repo);
+        }
+        continue;
+      }
+      this.logger.warn(
+        `Skipping GitHub connection while listing repos: ${result.reason?.message ?? result.reason}`,
+      );
+      tokenError = result.reason;
+    }
+
+    if (merged.length > 0) return merged;
+    if (tokenError) throw tokenError;
+
+    throw new BadRequestException(
+      `No repositories found for the linked ${provider} connections.`,
+    );
   }
 
   // ── Organisation-owned Connections ──────────────────────────────────────────
@@ -444,14 +486,24 @@ export class ConnectionsService {
     }
 
     const token = this.encryptionService.decrypt(connection.encryptedToken);
+    return this.listReposForConnection(connection, token);
+  }
+
+  private async listReposForConnection(
+    connection: Connection,
+    token: string,
+  ): Promise<RemoteRepository[]> {
     const adapter = this.getAdapter(connection.provider);
-
-    // If this connection is for a specific GitHub org, filter to org repos
-    if (connection.providerAccountType === 'ORGANIZATION' && connection.providerAccountLogin) {
-      return (adapter as any).fetchOrgRepositories?.(token, connection.providerAccountLogin)
-        ?? adapter.fetchUserRepositories(token);
+    if (
+      connection.providerAccountType === 'ORGANIZATION' &&
+      connection.providerAccountLogin &&
+      typeof (adapter as GithubAdapter).fetchOrgRepositories === 'function'
+    ) {
+      return (adapter as GithubAdapter).fetchOrgRepositories(
+        token,
+        connection.providerAccountLogin,
+      );
     }
-
     return adapter.fetchUserRepositories(token);
   }
 }

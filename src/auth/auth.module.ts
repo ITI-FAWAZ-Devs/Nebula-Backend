@@ -7,6 +7,7 @@ import { OrganizationsModule } from '../organizations/organizations.module';
 import { ConnectionsModule } from '../connections/connections.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { GithubConnectPendingStore } from './github-connect-pending.store';
 import { TokenService } from './token.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
@@ -25,6 +26,7 @@ import { GoogleStrategy } from './strategies/google.strategy';
   controllers: [AuthController],
   providers: [
     AuthService,
+    GithubConnectPendingStore,
     TokenService,
     JwtStrategy,
     JwtRefreshStrategy,
