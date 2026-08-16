@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GeminiFunctionCall } from '../../gemini/gemini.service';
 import { RetrievalHit } from '../dto/retrieval-hit.dto';
+import { TavilyResult, TavilySearchService } from '../retrieval/tavily-search.service';
 import { VectorRetrievalService } from '../retrieval/vector-retrieval.service';
 import { GraphRetrievalService } from '../retrieval/graph-retrieval.service';
 import { HybridRetrievalService } from '../retrieval/hybrid-retrieval.service';
@@ -13,6 +14,7 @@ export class ExecutorService {
     private readonly vector: VectorRetrievalService,
     private readonly graph: GraphRetrievalService,
     private readonly hybrid: HybridRetrievalService,
+    private readonly tavily: TavilySearchService,
   ) {}
 
   /**
@@ -21,21 +23,28 @@ export class ExecutorService {
   async execute(
     repositoryId: string,
     calls: GeminiFunctionCall[],
-  ): Promise<{ hits: RetrievalHit[]; toolsUsed: string[] }> {
+  ): Promise<{ hits: RetrievalHit[]; toolsUsed: string[]; webResults: TavilyResult[] }> {
     if (calls.length === 0) {
-      return { hits: [], toolsUsed: [] };
+      return { hits: [], toolsUsed: [], webResults: [] };
     }
 
     const results = await Promise.all(
       calls.map(async (call) => {
         try {
+          if (call.name === 'web_search') {
+            const webResults = await this.tavily.search(
+              String(call.args?.query || ''),
+              typeof call.args?.maxResults === 'number' ? call.args.maxResults : 4,
+            );
+            return { name: call.name, hits: [] as RetrievalHit[], webResults };
+          }
           const hits = await this.dispatch(repositoryId, call);
-          return { name: call.name, hits };
+          return { name: call.name, hits, webResults: [] as TavilyResult[] };
         } catch (error) {
           this.logger.warn(
             `Tool ${call.name} failed: ${(error as Error).message}`,
           );
-          return { name: call.name, hits: [] as RetrievalHit[] };
+          return { name: call.name, hits: [] as RetrievalHit[], webResults: [] as TavilyResult[] };
         }
       }),
     );
@@ -43,6 +52,7 @@ export class ExecutorService {
     return {
       hits: results.flatMap((r) => r.hits),
       toolsUsed: results.map((r) => r.name),
+      webResults: results.flatMap((r) => r.webResults),
     };
   }
 

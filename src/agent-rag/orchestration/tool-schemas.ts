@@ -116,6 +116,19 @@ export const AGENT_TOOL_DECLARATIONS: FunctionDeclarationsTool[] = [
           required: ['query'],
         },
       },
+      {
+        name: 'web_search',
+        description:
+          'Search the public web via Tavily for documentation, concepts, or library references that are not in this repository. Use only when repo evidence is insufficient or the question involves external public knowledge. Never substitute for codebase facts.',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            query: { type: SchemaType.STRING, description: 'Web search query' },
+            maxResults: { type: SchemaType.NUMBER, description: 'Number of web results (1-5)' },
+          },
+          required: ['query'],
+        },
+      },
     ],
   },
 ];

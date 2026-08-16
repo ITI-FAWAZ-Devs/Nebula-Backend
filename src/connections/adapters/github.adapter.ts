@@ -1,7 +1,6 @@
 import {
   Injectable,
   BadRequestException,
-  UnauthorizedException,
   NotFoundException,
   HttpException,
   HttpStatus,
@@ -19,14 +18,26 @@ export class GithubAdapter implements IProviderAdapter {
   readonly provider = ConnectionProvider.GITHUB;
   private readonly logger = new Logger(GithubAdapter.name);
 
+  private authHeaders(rawToken: string): Record<string, string> {
+    return {
+      Authorization: `Bearer ${rawToken.trim()}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Nebula-Backend',
+    };
+  }
+
+  private assertGithubTokenValid(status: number): void {
+    if (status === 401) {
+      throw new BadRequestException(
+        'GitHub token has expired or is invalid. Please reconnect GitHub.',
+      );
+    }
+  }
+
   async validateToken(rawToken: string): Promise<ValidatedTokenResult> {
     const response = await fetch('https://api.github.com/user', {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${rawToken}`,
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'Nebula-Backend',
-      },
+      headers: this.authHeaders(rawToken),
     });
 
     if (!response.ok) {
@@ -63,16 +74,12 @@ export class GithubAdapter implements IProviderAdapter {
         `https://api.github.com/orgs/${encodeURIComponent(orgLogin)}/repos?per_page=${perPage}&page=${page}&type=all`,
         {
           method: 'GET',
-          headers: {
-            Authorization: `Bearer ${rawToken}`,
-            Accept: 'application/vnd.github+json',
-            'User-Agent': 'Nebula-Backend',
-          },
+          headers: this.authHeaders(rawToken),
         },
       );
 
       if (!response.ok) {
-        if (response.status === 401) throw new UnauthorizedException('GitHub token expired or invalid.');
+        this.assertGithubTokenValid(response.status);
         break;
       }
 
@@ -106,14 +113,10 @@ export class GithubAdapter implements IProviderAdapter {
 
     while (hasNextPage) {
       const response = await fetch(
-        `https://api.github.com/user/repos?per_page=${perPage}&page=${page}`,
+        `https://api.github.com/user/repos?per_page=${perPage}&page=${page}&affiliation=owner,collaborator,organization_member&sort=updated`,
         {
           method: 'GET',
-          headers: {
-            Authorization: `Bearer ${rawToken}`,
-            Accept: 'application/vnd.github+json',
-            'User-Agent': 'Nebula-Backend',
-          },
+          headers: this.authHeaders(rawToken),
         },
       );
 
@@ -121,11 +124,7 @@ export class GithubAdapter implements IProviderAdapter {
         const errorBody = await response.json().catch(() => ({}));
         const errorMessage =
           errorBody?.message || 'Failed to fetch repositories from GitHub';
-        if (response.status === 401) {
-          throw new UnauthorizedException(
-            'GitHub token has expired or is invalid.',
-          );
-        }
+        this.assertGithubTokenValid(response.status);
         throw new HttpException(
           `GitHub API error: ${errorMessage}`,
           response.status || HttpStatus.BAD_GATEWAY,
@@ -169,16 +168,11 @@ export class GithubAdapter implements IProviderAdapter {
     )}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(branch)}`;
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${rawToken}`,
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'Nebula-Backend',
-      },
+      headers: this.authHeaders(rawToken),
     });
 
     if (!response.ok) {
-      if (response.status === 401)
-        throw new UnauthorizedException('GitHub token expired or invalid.');
+      this.assertGithubTokenValid(response.status);
       if (response.status === 404)
         throw new BadRequestException(
           `Repository ${owner}/${repo} or branch ${branch} not found`,
@@ -213,7 +207,7 @@ export class GithubAdapter implements IProviderAdapter {
     };
 
     if (rawToken) {
-      headers.Authorization = `Bearer ${rawToken}`;
+      headers.Authorization = `Bearer ${rawToken.trim()}`;
     }
 
     const response = await fetch(url, { method: 'GET', headers });
@@ -224,11 +218,7 @@ export class GithubAdapter implements IProviderAdapter {
           `Repository "${owner}/${repo}" was not found on GitHub.`,
         );
       }
-      if (response.status === 401) {
-        throw new UnauthorizedException(
-          'GitHub token is invalid or expired for accessing this repository.',
-        );
-      }
+      this.assertGithubTokenValid(response.status);
       const errorBody = await response.json().catch(() => ({}));
       const message = errorBody?.message || 'Failed to fetch repository metadata';
       throw new HttpException(

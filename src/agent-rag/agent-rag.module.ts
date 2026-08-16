@@ -13,6 +13,8 @@ import { HybridRetrievalService } from './retrieval/hybrid-retrieval.service';
 import { RerankerService } from './retrieval/reranker.service';
 import { ToolResultCache } from './retrieval/tool-result-cache';
 import { AnswerCacheService } from './retrieval/answer-cache.service';
+import { TavilySearchService } from './retrieval/tavily-search.service';
+import { CitationSnippetService } from './retrieval/citation-snippet.service';
 import { PlannerService } from './orchestration/planner.service';
 import { ExecutorService } from './orchestration/executor.service';
 import { ContextBuilderService } from './orchestration/context-builder.service';
@@ -36,6 +38,8 @@ import { ConversationPersistenceService } from './persistence/conversation-persi
     RerankerService,
     ToolResultCache,
     AnswerCacheService,
+    TavilySearchService,
+    CitationSnippetService,
     PlannerService,
     ExecutorService,
     ContextBuilderService,

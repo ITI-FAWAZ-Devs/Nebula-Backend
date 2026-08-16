@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Content } from '@google/generative-ai';
 import { GeminiService, GeminiFunctionCall } from '../../gemini/gemini.service';
+import { TavilySearchService } from '../retrieval/tavily-search.service';
 import { AGENT_TOOL_DECLARATIONS } from './tool-schemas';
 
 export interface PlannerInput {
@@ -12,7 +13,10 @@ export interface PlannerInput {
 
 @Injectable()
 export class PlannerService {
-  constructor(private readonly gemini: GeminiService) {}
+  constructor(
+    private readonly gemini: GeminiService,
+    private readonly tavily: TavilySearchService,
+  ) {}
 
   async plan(input: PlannerInput): Promise<{
     text?: string;
@@ -40,11 +44,19 @@ export class PlannerService {
 
     const systemInstruction = [
       'You are a repository Q&A planner for Nebula.',
-      'Select the best retrieval tool(s) for the user question.',
-      'Prefer hybrid_search for open-ended questions; use graph tools for structural questions (callers, callees, implementations).',
-      'You may call multiple tools. Do not invent Cypher or SQL.',
-      'If you already have enough evidence from prior tool results, answer briefly that synthesis can proceed and call no tools.',
-    ].join(' ');
+      'Your job is to select the best retrieval tool(s) for the user question — the synthesizer will produce a structured DeepWiki-style answer from the evidence you gather.',
+      '',
+      'Tool selection rules:',
+      '- hybrid_search: default for open-ended conceptual questions about this codebase.',
+      '- vector_search: targeted semantic search when you know the topic area.',
+      '- graph tools (getDefinition, getCallers, getCallees, getImplementations, getFileContext, getModuleOverview): for structural questions about specific files, classes, or call relationships.',
+      this.tavily.isAvailable
+        ? '- web_search: ONLY for public concepts, library documentation, or standards that are NOT specific to this repository. Never use it as a substitute for codebase retrieval.'
+        : '- web_search is UNAVAILABLE (no API key). Do not call it.',
+      '- You may call multiple tools in one turn.',
+      '- Do NOT invent Cypher or SQL.',
+      '- If you already have enough evidence from prior tool results, call no tools and let synthesis proceed.',
+    ].join('\n');
 
     const textParts = [historyText, `Question: ${input.question}`, recent, prior, 'Choose tool calls now.'].filter(Boolean);
 

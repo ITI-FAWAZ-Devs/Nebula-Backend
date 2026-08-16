@@ -29,9 +29,11 @@ export class GithubClientService {
     userId: string,
     forceRefresh = false,
     connectionId?: string,
+    organizationId?: string,
   ): Promise<GitHubRepoDetails[]> {
+    const cacheKey = [userId, connectionId ?? 'all', organizationId ?? 'personal'].join(':');
     if (!forceRefresh) {
-      const cached = this.cache.get(userId);
+      const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
         return cached.data;
       }
@@ -41,6 +43,7 @@ export class GithubClientService {
       userId,
       connectionId,
       ConnectionProvider.GITHUB,
+      organizationId,
     );
 
     const mapped: GitHubRepoDetails[] = remoteRepos.map((repo) => ({
@@ -52,7 +55,7 @@ export class GithubClientService {
       cloneUrl: repo.cloneUrl,
     }));
 
-    this.cache.set(userId, { data: mapped, timestamp: Date.now() });
+    this.cache.set(cacheKey, { data: mapped, timestamp: Date.now() });
     return mapped;
   }
 

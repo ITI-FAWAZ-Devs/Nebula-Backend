@@ -72,6 +72,7 @@ describe('GithubClientService', () => {
         'user-123',
         undefined,
         'GITHUB',
+        undefined,
       );
     });
 

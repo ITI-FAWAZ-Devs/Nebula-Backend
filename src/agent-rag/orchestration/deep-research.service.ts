@@ -5,7 +5,9 @@ import { ExecutorService } from './executor.service';
 import { ContextBuilderService } from './context-builder.service';
 import { SynthesizerService } from './synthesizer.service';
 import { FollowupGeneratorService } from './followup-generator.service';
-import { RetrievalHit } from '../dto/retrieval-hit.dto';
+import { RetrievalHit, AgentCitation } from '../dto/retrieval-hit.dto';
+import { TavilyResult } from '../retrieval/tavily-search.service';
+import { CitationSnippetService } from '../retrieval/citation-snippet.service';
 import {
   DEEP_RESEARCH_MAX_SUB_QUESTIONS,
   DEEP_RESEARCH_MAX_ITERATIONS,
@@ -22,6 +24,7 @@ export class DeepResearchService {
     private readonly contextBuilder: ContextBuilderService,
     private readonly synthesizer: SynthesizerService,
     private readonly followupGenerator: FollowupGeneratorService,
+    private readonly snippets: CitationSnippetService,
   ) {}
 
   async decomposeQuestion(question: string): Promise<string[]> {
@@ -63,7 +66,7 @@ export class DeepResearchService {
     responseStyle?: 'text' | 'voice';
     model?: string;
   }): AsyncGenerator<{
-    event: 'mode' | 'progress' | 'token' | 'citation' | 'done' | 'followups' | 'error';
+    event: 'mode' | 'progress' | 'scanning' | 'web_source' | 'token' | 'citation' | 'done' | 'followups' | 'error';
     data: unknown;
   }> {
     try {
@@ -75,7 +78,9 @@ export class DeepResearchService {
       );
 
       const collected: RetrievalHit[] = [];
+      const allWebResults: TavilyResult[] = [];
       const toolsUsed: string[] = [];
+      const scannedFiles = new Set<string>();
 
       for (let index = 0; index < subQuestions.length; index++) {
         const subQ = subQuestions[index];
@@ -107,7 +112,24 @@ export class DeepResearchService {
           );
           toolsUsed.push(...executed.toolsUsed);
           collected.push(...executed.hits);
+          allWebResults.push(...(executed.webResults ?? []));
           priorSummary = this.summarizeHits(executed.hits);
+
+          const repoTool =
+            executed.toolsUsed.find((t) => t !== 'web_search') ??
+            executed.toolsUsed[0] ??
+            'search';
+          for (const hit of executed.hits) {
+            if (hit.filePath && !scannedFiles.has(hit.filePath)) {
+              scannedFiles.add(hit.filePath);
+              yield { event: 'scanning', data: { filePath: hit.filePath, tool: repoTool } };
+            }
+          }
+
+          for (const web of executed.webResults ?? []) {
+            yield { event: 'web_source', data: web };
+          }
+
           if (executed.hits.length === 0 && iter > 0) break;
         }
       }
@@ -119,19 +141,31 @@ export class DeepResearchService {
         ]);
         toolsUsed.push(...executed.toolsUsed);
         collected.push(...executed.hits);
+        for (const hit of executed.hits) {
+          if (hit.filePath && !scannedFiles.has(hit.filePath)) {
+            scannedFiles.add(hit.filePath);
+            yield { event: 'scanning', data: { filePath: hit.filePath, tool: 'hybrid_search' } };
+          }
+        }
       }
 
       const { contextText, selectedHits } =
         this.contextBuilder.build(collected);
 
+      const webContextBlock = this.formatWebContext(allWebResults);
+
       let answer = '';
-      let citations = selectedHits
-        .filter((h) => h.filePath)
-        .map((h) => ({
-          filePath: h.filePath as string,
-          lineRange: h.lineRange,
-          nodeId: h.nodeId,
-        }));
+      let citations = await this.snippets.enrich(
+        params.repositoryId,
+        selectedHits
+          .filter((h) => h.filePath)
+          .map((h) => ({
+            filePath: h.filePath as string,
+            lineRange: h.lineRange,
+            nodeId: h.nodeId,
+            snippet: h.content || undefined,
+          })),
+      );
 
       for (const c of citations) {
         yield { event: 'citation', data: c };
@@ -141,7 +175,7 @@ export class DeepResearchService {
         `Deep Research Context across ${subQuestions.length} sub-questions:`,
         subQuestions.map((q, i) => `Sub-question ${i + 1}: ${q}`).join('\n'),
         '',
-        contextText,
+        contextText + webContextBlock,
       ].join('\n');
 
       for await (const chunk of this.synthesizer.synthesizeStream(
@@ -157,10 +191,10 @@ export class DeepResearchService {
         } else if (chunk.type === 'done') {
           const done = chunk.data as {
             answer: string;
-            citations: typeof citations;
+            citations: AgentCitation[];
           };
           answer = done.answer;
-          citations = done.citations;
+          citations = this.snippets.merge(done.citations, citations);
         }
       }
 
@@ -196,6 +230,16 @@ export class DeepResearchService {
         data: { message: (error as Error).message },
       };
     }
+  }
+
+  private formatWebContext(results: TavilyResult[]): string {
+    if (results.length === 0) return '';
+    return (
+      '\n\n## Web search results (external, not from this repository)\n' +
+      results
+        .map((r, i) => `[Web ${i + 1}] ${r.title} (${r.url})\n${r.snippet}`)
+        .join('\n\n')
+    );
   }
 
   private summarizeHits(hits: RetrievalHit[]): string {
