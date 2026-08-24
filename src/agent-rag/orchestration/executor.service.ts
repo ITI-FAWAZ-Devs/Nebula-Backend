@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GeminiFunctionCall } from '../../gemini/gemini.service';
 import { RetrievalHit } from '../dto/retrieval-hit.dto';
-import { TavilyResult, TavilySearchService } from '../retrieval/tavily-search.service';
+import {
+  TavilyResult,
+  TavilySearchService,
+} from '../retrieval/tavily-search.service';
 import { VectorRetrievalService } from '../retrieval/vector-retrieval.service';
 import { GraphRetrievalService } from '../retrieval/graph-retrieval.service';
 import { HybridRetrievalService } from '../retrieval/hybrid-retrieval.service';
@@ -23,7 +26,11 @@ export class ExecutorService {
   async execute(
     repositoryId: string,
     calls: GeminiFunctionCall[],
-  ): Promise<{ hits: RetrievalHit[]; toolsUsed: string[]; webResults: TavilyResult[] }> {
+  ): Promise<{
+    hits: RetrievalHit[];
+    toolsUsed: string[];
+    webResults: TavilyResult[];
+  }> {
     if (calls.length === 0) {
       return { hits: [], toolsUsed: [], webResults: [] };
     }
@@ -34,7 +41,9 @@ export class ExecutorService {
           if (call.name === 'web_search') {
             const webResults = await this.tavily.search(
               String(call.args?.query || ''),
-              typeof call.args?.maxResults === 'number' ? call.args.maxResults : 4,
+              typeof call.args?.maxResults === 'number'
+                ? call.args.maxResults
+                : 4,
             );
             return { name: call.name, hits: [] as RetrievalHit[], webResults };
           }
@@ -44,7 +53,11 @@ export class ExecutorService {
           this.logger.warn(
             `Tool ${call.name} failed: ${(error as Error).message}`,
           );
-          return { name: call.name, hits: [] as RetrievalHit[], webResults: [] as TavilyResult[] };
+          return {
+            name: call.name,
+            hits: [] as RetrievalHit[],
+            webResults: [] as TavilyResult[],
+          };
         }
       }),
     );

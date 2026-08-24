@@ -38,7 +38,9 @@ export class AnalysisService {
         repository.organizationId,
       );
       if (!permissions || !permissions.includes(Permission.REPO_PROCESS)) {
-        throw new ForbiddenException('You do not have access to this repository');
+        throw new ForbiddenException(
+          'You do not have access to this repository',
+        );
       }
     } else if (repository.userId !== userId) {
       throw new ForbiddenException('You do not have access to this repository');
@@ -121,7 +123,9 @@ export class AnalysisService {
         repository.organizationId,
       );
       if (!permissions || !permissions.includes(Permission.REPO_READ)) {
-        throw new ForbiddenException('You do not have access to this repository');
+        throw new ForbiddenException(
+          'You do not have access to this repository',
+        );
       }
     } else if (repository.userId !== userId) {
       throw new ForbiddenException('You do not have access to this repository');

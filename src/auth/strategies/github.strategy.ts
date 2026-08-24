@@ -36,7 +36,9 @@ export class GithubStrategy extends PassportStrategy(Strategy, 'github') {
     try {
       const raw = req.query?.state as string | undefined;
       if (raw) {
-        state = JSON.parse(Buffer.from(decodeURIComponent(raw), 'base64').toString());
+        state = JSON.parse(
+          Buffer.from(decodeURIComponent(raw), 'base64').toString(),
+        );
       }
     } catch {
       // ignore malformed state

@@ -100,7 +100,6 @@ export class RepositoriesController {
     };
   }
 
-
   /**
    * POST /repositories/import
    * Imports a selected GitHub repository into the database.
@@ -255,7 +254,10 @@ export class RepositoriesController {
     @CurrentUser('id') userId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const repository = await this.repositoriesService.getImportedByIdForWrite(userId, id);
+    const repository = await this.repositoriesService.getImportedByIdForWrite(
+      userId,
+      id,
+    );
 
     // Return the most recent non-failed job — active or completed.
     // A new job is only created when there are no prior jobs or the last one failed.
@@ -331,7 +333,10 @@ export class RepositoriesController {
     @CurrentUser('id') userId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const repository = await this.repositoriesService.getImportedById(userId, id);
+    const repository = await this.repositoriesService.getImportedById(
+      userId,
+      id,
+    );
 
     const job = await this.prisma.documentationJob.findFirst({
       where: { repositoryId: id },
@@ -361,7 +366,10 @@ export class RepositoriesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AskQuestionDto,
   ) {
-    const repository = await this.repositoriesService.getImportedByIdForWrite(userId, id);
+    const repository = await this.repositoriesService.getImportedByIdForWrite(
+      userId,
+      id,
+    );
 
     const result = await this.askService.ask(id, dto.question);
     return {

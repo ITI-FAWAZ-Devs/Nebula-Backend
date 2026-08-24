@@ -105,9 +105,7 @@ export class ConnectionsService {
     }
 
     if (connection.userId && connection.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not have access to this connection',
-      );
+      throw new ForbiddenException('You do not have access to this connection');
     }
 
     return connection;
@@ -156,9 +154,13 @@ export class ConnectionsService {
     if (connectionId) {
       const conn = await this.getConnectionById(connectionId, userId);
       if (organizationId && conn.orgId && conn.orgId !== organizationId) {
-        throw new ForbiddenException('You do not have access to this connection');
+        throw new ForbiddenException(
+          'You do not have access to this connection',
+        );
       }
-      const decryptedToken = this.encryptionService.decrypt(conn.encryptedToken);
+      const decryptedToken = this.encryptionService.decrypt(
+        conn.encryptedToken,
+      );
       return this.listReposForConnection(conn, decryptedToken);
     }
 
@@ -180,7 +182,9 @@ export class ConnectionsService {
 
     const settled = await Promise.allSettled(
       connections.map(async (conn) => {
-        const decryptedToken = this.encryptionService.decrypt(conn.encryptedToken);
+        const decryptedToken = this.encryptionService.decrypt(
+          conn.encryptedToken,
+        );
         return this.listReposForConnection(conn, decryptedToken);
       }),
     );
@@ -320,7 +324,13 @@ export class ConnectionsService {
     isPrivate?: boolean;
     provider?: ConnectionProvider;
   }): Promise<string | null> {
-    const { userId, orgId, connectionId, isPrivate, provider = ConnectionProvider.GITHUB } = opts;
+    const {
+      userId,
+      orgId,
+      connectionId,
+      isPrivate,
+      provider = ConnectionProvider.GITHUB,
+    } = opts;
 
     // 1. Explicit connection
     if (connectionId) {
@@ -330,12 +340,14 @@ export class ConnectionsService {
     // 2. Org default
     if (orgId) {
       const orgConn = await this.findDefaultOrgConnection(orgId, provider);
-      if (orgConn) return this.encryptionService.decrypt(orgConn.encryptedToken);
+      if (orgConn)
+        return this.encryptionService.decrypt(orgConn.encryptedToken);
     }
 
     // 3. User personal default
     const userConn = await this.findDefaultUserConnection(userId, provider);
-    if (userConn) return this.encryptionService.decrypt(userConn.encryptedToken);
+    if (userConn)
+      return this.encryptionService.decrypt(userConn.encryptedToken);
 
     // 4. No token — only acceptable for public repos
     if (isPrivate) {
@@ -399,8 +411,20 @@ export class ConnectionsService {
     try {
       const connection = await this.prisma.connection.upsert({
         where: opts.orgId
-          ? { orgId_provider_label: { orgId: opts.orgId, provider: opts.provider, label } }
-          : { userId_provider_label: { userId: opts.userId, provider: opts.provider, label } },
+          ? {
+              orgId_provider_label: {
+                orgId: opts.orgId,
+                provider: opts.provider,
+                label,
+              },
+            }
+          : {
+              userId_provider_label: {
+                userId: opts.userId,
+                provider: opts.provider,
+                label,
+              },
+            },
         create: data,
         update: {
           encryptedToken,
@@ -413,7 +437,9 @@ export class ConnectionsService {
         },
       });
       const { encryptedToken: _, ...safeData } = connection;
-      this.logger.log(`Stored OAuth token for ${opts.login} (${opts.accountType})`);
+      this.logger.log(
+        `Stored OAuth token for ${opts.login} (${opts.accountType})`,
+      );
       return safeData;
     } catch (err: any) {
       if (err?.code === 'P2002') {
@@ -430,7 +456,12 @@ export class ConnectionsService {
    */
   async listGithubOrgsForToken(rawToken: string): Promise<{
     user: { login: string; id: string; type: 'USER'; avatarUrl: string | null };
-    orgs: Array<{ login: string; id: string; type: 'ORGANIZATION'; avatarUrl: string | null }>;
+    orgs: Array<{
+      login: string;
+      id: string;
+      type: 'ORGANIZATION';
+      avatarUrl: string | null;
+    }>;
   }> {
     const headers = {
       Authorization: `Bearer ${rawToken}`,
@@ -447,11 +478,26 @@ export class ConnectionsService {
       throw new BadRequestException('Failed to fetch GitHub user info');
     }
 
-    const userData = await userRes.json() as { login: string; id: number; avatar_url: string };
-    const orgsData = orgsRes.ok ? (await orgsRes.json() as Array<{ login: string; id: number; avatar_url: string }>) : [];
+    const userData = (await userRes.json()) as {
+      login: string;
+      id: number;
+      avatar_url: string;
+    };
+    const orgsData = orgsRes.ok
+      ? ((await orgsRes.json()) as Array<{
+          login: string;
+          id: number;
+          avatar_url: string;
+        }>)
+      : [];
 
     return {
-      user: { login: userData.login, id: String(userData.id), type: 'USER', avatarUrl: userData.avatar_url },
+      user: {
+        login: userData.login,
+        id: String(userData.id),
+        type: 'USER',
+        avatarUrl: userData.avatar_url,
+      },
       orgs: orgsData.map((o) => ({
         login: o.login,
         id: String(o.id),
@@ -464,7 +510,10 @@ export class ConnectionsService {
   /**
    * Gets a decrypted token for a user connection by connectionId (verifying user ownership).
    */
-  async getDecryptedUserToken(connectionId: string, userId: string): Promise<string> {
+  async getDecryptedUserToken(
+    connectionId: string,
+    userId: string,
+  ): Promise<string> {
     const conn = await this.getConnectionById(connectionId, userId);
     return this.encryptionService.decrypt(conn.encryptedToken);
   }
@@ -477,12 +526,16 @@ export class ConnectionsService {
     connectionId: string,
     userId: string,
   ): Promise<RemoteRepository[]> {
-    const connection = await this.prisma.connection.findUnique({ where: { id: connectionId } });
+    const connection = await this.prisma.connection.findUnique({
+      where: { id: connectionId },
+    });
     if (!connection) throw new BadRequestException('Connection not found');
 
     // Verify ownership
     if (connection.userId && connection.userId !== userId) {
-      throw new BadRequestException('You do not have access to this connection');
+      throw new BadRequestException(
+        'You do not have access to this connection',
+      );
     }
 
     const token = this.encryptionService.decrypt(connection.encryptedToken);

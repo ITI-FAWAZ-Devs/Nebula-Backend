@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execa } from 'execa';
 import * as fs from 'fs/promises';
@@ -50,9 +46,23 @@ export class GraphifyService {
         reject: true,
       });
     } catch (error) {
-      const err = error as Error & { stderr?: string; stdout?: string };
-      this.logger.warn(
-        `Graphify CLI execution failed or binary '${bin}' not found: ${err.message}\nstderr: ${err.stderr || ''}. Proceeding with fallback graph.`,
+      const err = error as Error & {
+        stderr?: string;
+        stdout?: string;
+        failed?: boolean;
+        timedOut?: boolean;
+      };
+      // Fail loudly: an empty graph would silently produce a Repository-only
+      // knowledge graph in Neo4j (no nodes/edges), which is never useful.
+      this.logger.error(
+        `Graphify CLI execution failed (bin='${bin}'): ${err.message}\nstderr: ${err.stderr || '(none)'}`,
+      );
+      throw new Error(
+        `Graphify extraction failed: ${
+          err.timedOut
+            ? `timed out after ${timeoutMs}ms`
+            : `'${bin}' could not be executed. Ensure GRAPHIFY_BIN points to the installed CLI and it is on PATH.`
+        } ${err.stderr ? `| stderr: ${err.stderr.trim()}` : ''}`,
       );
     }
 
@@ -112,15 +122,14 @@ export class GraphifyService {
         outputPath: outputFile,
       };
     } catch (error) {
-      this.logger.warn(
-        `Could not read Graphify output at ${outputFile}: ${(error as Error).message}. Returning empty result.`,
+      // The CLI exited 0 but produced no readable output — treat as failure
+      // rather than silently continuing with an empty graph.
+      this.logger.error(
+        `Could not read Graphify output at ${outputFile}: ${(error as Error).message}`,
       );
-      return {
-        raw: null,
-        nodes: [],
-        edges: [],
-        outputPath: outputFile,
-      };
+      throw new Error(
+        `Graphify reported success but no readable output was found at ${outputFile}`,
+      );
     }
   }
 }

@@ -13,8 +13,12 @@ export function isWslPath(p: string): boolean {
  * Parses a WSL UNC path into the distribution name and the internal Linux path.
  * Example: \\wsl$\Ubuntu\root\.local\opt\piper\piper -> { distro: 'Ubuntu', linuxPath: '/root/.local/opt/piper/piper' }
  */
-export function parseWslPath(p: string): { distro: string; linuxPath: string } | null {
-  const match = p.match(/^[\\/]{2}wsl(?:\$|\.localhost)[\\/]([^\\/]+)[\\/](.*)$/i);
+export function parseWslPath(
+  p: string,
+): { distro: string; linuxPath: string } | null {
+  const match = p.match(
+    /^[\\/]{2}wsl(?:\$|\.localhost)[\\/]([^\\/]+)[\\/](.*)$/i,
+  );
   if (!match) return null;
   const distro = match[1];
   const linuxPath = '/' + match[2].replace(/\\/g, '/');
@@ -60,7 +64,11 @@ export function spawnCrossPlatform(
         return arg;
       });
 
-      return spawn('wsl.exe', ['-d', wsl.distro, wsl.linuxPath, ...convertedArgs], options);
+      return spawn(
+        'wsl.exe',
+        ['-d', wsl.distro, wsl.linuxPath, ...convertedArgs],
+        options,
+      );
     }
   }
 

@@ -36,12 +36,11 @@ export class PiperTTSProvider implements TTSProvider {
     this.speaking = true;
 
     return new Promise<void>((resolve) => {
-      const args = [
-        '--model', this.piperModel,
-        '--output-raw',
-      ];
+      const args = ['--model', this.piperModel, '--output-raw'];
 
-      const proc = spawnCrossPlatform(this.piperBin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      const proc = spawnCrossPlatform(this.piperBin, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
       this.currentProcess = proc;
 
       proc.stdout?.on('data', (chunk: Buffer) => {

@@ -36,14 +36,17 @@ export class DeepResearchService {
         `Break down this query into 2 to ${DEEP_RESEARCH_MAX_SUB_QUESTIONS} focused, technical sub-questions that must be answered to thoroughly investigate the codebase.`,
         'Rules:',
         '- Each sub-question must be SELF-CONTAINED: repeat entity names from the original request instead of pronouns like "it" or "that".',
-        '- Each must be answerable by searching this repository\'s code (files, classes, call relationships, configuration).',
+        "- Each must be answerable by searching this repository's code (files, classes, call relationships, configuration).",
         '- Cover different aspects: entry points, data flow, dependencies, error handling, or persistence — as relevant.',
         'Return ONLY a JSON array of strings. Example: ["Where is authentication initiated in the backend?", "How are JWT tokens validated and which service does it?", "How is session state persisted between requests?"]',
         'Do not wrap in markdown block quotes or extra text.',
       ].join('\n');
 
       const raw = await this.gemini.generateContent(prompt);
-      const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const cleaned = raw
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
       const parsed = JSON.parse(cleaned);
 
       if (
@@ -70,7 +73,16 @@ export class DeepResearchService {
     responseStyle?: 'text' | 'voice';
     model?: string;
   }): AsyncGenerator<{
-    event: 'mode' | 'progress' | 'scanning' | 'web_source' | 'token' | 'citation' | 'done' | 'followups' | 'error';
+    event:
+      | 'mode'
+      | 'progress'
+      | 'scanning'
+      | 'web_source'
+      | 'token'
+      | 'citation'
+      | 'done'
+      | 'followups'
+      | 'error';
     data: unknown;
   }> {
     try {
@@ -126,7 +138,10 @@ export class DeepResearchService {
           for (const hit of executed.hits) {
             if (hit.filePath && !scannedFiles.has(hit.filePath)) {
               scannedFiles.add(hit.filePath);
-              yield { event: 'scanning', data: { filePath: hit.filePath, tool: repoTool } };
+              yield {
+                event: 'scanning',
+                data: { filePath: hit.filePath, tool: repoTool },
+              };
             }
           }
 
@@ -148,7 +163,10 @@ export class DeepResearchService {
         for (const hit of executed.hits) {
           if (hit.filePath && !scannedFiles.has(hit.filePath)) {
             scannedFiles.add(hit.filePath);
-            yield { event: 'scanning', data: { filePath: hit.filePath, tool: 'hybrid_search' } };
+            yield {
+              event: 'scanning',
+              data: { filePath: hit.filePath, tool: 'hybrid_search' },
+            };
           }
         }
       }

@@ -53,7 +53,11 @@ export class ArchitectureDocService {
     repositoryId: string,
     dto: CreateArchitectureDocDto = {},
   ): Promise<ArchitectureDocTriggerResponse> {
-    const repository = await this.findOwnedRepository(userId, repositoryId, Permission.REPO_PROCESS);
+    const repository = await this.findOwnedRepository(
+      userId,
+      repositoryId,
+      Permission.REPO_PROCESS,
+    );
     this.assertRepositoryReady(repository);
     this.assertValidCommit(repository, dto.commitSha);
 
@@ -90,7 +94,11 @@ export class ArchitectureDocService {
     userId: string,
     repositoryId: string,
   ): Promise<ArchitectureDocRegenerateResponse> {
-    const repository = await this.findOwnedRepository(userId, repositoryId, Permission.REPO_PROCESS);
+    const repository = await this.findOwnedRepository(
+      userId,
+      repositoryId,
+      Permission.REPO_PROCESS,
+    );
     this.assertRepositoryReady(repository);
 
     const activeDoc = await this.findActiveDocument(repositoryId);
@@ -443,7 +451,9 @@ export class ArchitectureDocService {
         repository.organizationId,
       );
       if (!permissions || !permissions.includes(requiredPermission)) {
-        throw new ForbiddenException('You do not have access to this repository');
+        throw new ForbiddenException(
+          'You do not have access to this repository',
+        );
       }
     } else if (repository.userId !== userId) {
       throw new ForbiddenException('You do not have access to this repository');

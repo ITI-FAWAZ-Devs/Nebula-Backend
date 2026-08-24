@@ -43,11 +43,17 @@ export class GithubAdapter implements IProviderAdapter {
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
       const message = errorBody?.message || 'GitHub token validation failed';
-      this.logger.warn(`GitHub token validation failed: ${response.status} ${message}`);
-      throw new BadRequestException('Invalid GitHub token. Please check it and try again.');
+      this.logger.warn(
+        `GitHub token validation failed: ${response.status} ${message}`,
+      );
+      throw new BadRequestException(
+        'Invalid GitHub token. Please check it and try again.',
+      );
     }
 
-    const userData = (await response.json().catch(() => ({}))) as { login?: string };
+    const userData = (await response.json().catch(() => ({}))) as {
+      login?: string;
+    };
     const scopeHeader = response.headers.get('x-oauth-scopes') || '';
     const scopes = scopeHeader
       .split(',')
@@ -63,7 +69,10 @@ export class GithubAdapter implements IProviderAdapter {
   }
 
   /** Fetches repositories for a specific GitHub organization. */
-  async fetchOrgRepositories(rawToken: string, orgLogin: string): Promise<RemoteRepository[]> {
+  async fetchOrgRepositories(
+    rawToken: string,
+    orgLogin: string,
+  ): Promise<RemoteRepository[]> {
     const allRepos: RemoteRepository[] = [];
     let page = 1;
     const perPage = 100;
@@ -99,7 +108,9 @@ export class GithubAdapter implements IProviderAdapter {
       );
 
       const linkHeader = response.headers.get('link');
-      hasNextPage = !!(linkHeader?.includes('rel="next"') && reposData.length === perPage);
+      hasNextPage = !!(
+        linkHeader?.includes('rel="next"') && reposData.length === perPage
+      );
       if (hasNextPage) page++;
     }
 
@@ -148,7 +159,9 @@ export class GithubAdapter implements IProviderAdapter {
       allRepos.push(...mapped);
 
       const linkHeader = response.headers.get('link');
-      const hasNextLink = linkHeader ? linkHeader.includes('rel="next"') : false;
+      const hasNextLink = linkHeader
+        ? linkHeader.includes('rel="next"')
+        : false;
       if (hasNextLink && reposData.length === perPage) {
         page++;
       } else {
@@ -222,14 +235,15 @@ export class GithubAdapter implements IProviderAdapter {
       }
       this.assertGithubTokenValid(response.status);
       const errorBody = await response.json().catch(() => ({}));
-      const message = errorBody?.message || 'Failed to fetch repository metadata';
+      const message =
+        errorBody?.message || 'Failed to fetch repository metadata';
       throw new HttpException(
         `GitHub API error: ${message}`,
         response.status || HttpStatus.BAD_GATEWAY,
       );
     }
 
-    const data = (await response.json()) as any;
+    const data = await response.json();
     return {
       providerRepoId: String(data.id),
       name: data.name,

@@ -191,10 +191,7 @@ describe('AiProviderService', () => {
       expect(result.provider).toBe('gemini');
       expect(result.model).toBe('gemini-embed-model');
       expect(result.dimensions).toBe(768);
-      expect(result.embeddings).toEqual([
-        dummyVector,
-        dummyVector,
-      ]);
+      expect(result.embeddings).toEqual([dummyVector, dummyVector]);
       expect(result.fallbackOccurred).toBe(false);
     });
 

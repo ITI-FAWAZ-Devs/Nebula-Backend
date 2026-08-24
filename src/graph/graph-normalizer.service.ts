@@ -134,6 +134,7 @@ export class GraphNormalizerService {
     const normalized = raw.trim();
     const aliases: Record<string, EntityType> = {
       repository: 'Repository',
+      module: 'Module',
       directory: 'Directory',
       dir: 'Directory',
       folder: 'Directory',

@@ -56,7 +56,7 @@ describe('AnswerCacheService', () => {
       contextNodeIds: [],
     };
 
-    await service.set('repo-1', 'How does auth work?', answerData as any);
+    await service.set('repo-1', 'How does auth work?', answerData);
     expect(mockRedis.set).toHaveBeenCalledWith(
       expect.stringContaining('agent-answer:repo-1:'),
       JSON.stringify(answerData),

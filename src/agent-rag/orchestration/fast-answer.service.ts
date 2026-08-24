@@ -57,8 +57,7 @@ export class FastAnswerService {
         return null;
       }
 
-      const distance =
-        typeof distances[0] === 'number' ? distances[0] : 1.0;
+      const distance = typeof distances[0] === 'number' ? distances[0] : 1.0;
       // Similarity score calculation matching VectorRetrievalService
       const score = Math.max(0, Math.min(1, 1 / (1 + distance)));
 
@@ -74,7 +73,10 @@ export class FastAnswerService {
       const sectionKey = String(meta.sectionKey || '');
       const sourceFilesRaw = String(meta.sourceFiles || '');
       const sourceFiles = sourceFilesRaw
-        ? sourceFilesRaw.split(',').map((s) => s.trim()).filter(Boolean)
+        ? sourceFilesRaw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
         : [];
 
       const citations: AgentCitation[] = sourceFiles.map((filePath) => ({

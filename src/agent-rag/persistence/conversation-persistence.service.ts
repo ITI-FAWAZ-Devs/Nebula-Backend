@@ -21,7 +21,11 @@ export class ConversationPersistenceService {
 
     if (threadId) {
       const existing = await this.prisma.conversationThread.findFirst({
-        where: { id: threadId, userId: input.userId, repositoryId: input.repositoryId },
+        where: {
+          id: threadId,
+          userId: input.userId,
+          repositoryId: input.repositoryId,
+        },
       });
       if (!existing) {
         threadId = undefined;
@@ -93,7 +97,11 @@ export class ConversationPersistenceService {
     }));
   }
 
-  async getThreadDetails(userId: string, repositoryId: string, threadId: string) {
+  async getThreadDetails(
+    userId: string,
+    repositoryId: string,
+    threadId: string,
+  ) {
     const thread = await this.prisma.conversationThread.findFirst({
       where: { id: threadId, userId, repositoryId },
       include: {

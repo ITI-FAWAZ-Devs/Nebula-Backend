@@ -14,9 +14,7 @@ import { GraphToolNode } from '../../neo4j/neo4j.service';
  */
 @Injectable()
 export class HitEnricherService {
-  constructor(
-    private readonly chroma: ChromaService,
-  ) {}
+  constructor(private readonly chroma: ChromaService) {}
 
   mapGraphNode(node: GraphToolNode, score = 0.5): RetrievalHit {
     const type = (node.labels[0] as EntityType) || 'File';
@@ -82,10 +80,9 @@ export class HitEnricherService {
     );
 
     try {
-      const result = await this.chroma.getByIds(
-        collectionName,
-        [...requestedIds.keys()],
-      );
+      const result = await this.chroma.getByIds(collectionName, [
+        ...requestedIds.keys(),
+      ]);
       result.ids.forEach((id, i) => {
         const doc = result.documents[i];
         const originalPath = requestedIds.get(id);

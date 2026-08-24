@@ -15,7 +15,14 @@ describe('CitationSnippetService', () => {
     await fs.mkdir(path.join(tmpDir, 'src'));
     await fs.writeFile(
       path.join(tmpDir, 'src', 'auth.ts'),
-      ['line1', 'line2', 'function authenticate() {', '  return true;', '}', 'line6'].join('\n'),
+      [
+        'line1',
+        'line2',
+        'function authenticate() {',
+        '  return true;',
+        '}',
+        'line6',
+      ].join('\n'),
     );
 
     prismaMock = {

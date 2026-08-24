@@ -50,11 +50,14 @@ export class OrgPermissionGuard implements CanActivate {
     }
 
     // Support both new dotted permissions and legacy colon-based strings
-    const hasPermission = permissions.some((p) => p === requiredPermission)
-      || permissions.some((p) => {
+    const hasPermission =
+      permissions.some((p) => p === requiredPermission) ||
+      permissions.some((p) => {
         // normalize legacy: 'org:manage' covers org.manage_roles + org.manage_settings
-        if (requiredPermission.startsWith('org.') && p === 'org:manage') return true;
-        if (requiredPermission.startsWith('repo.') && p === 'repo:read') return false; // too broad
+        if (requiredPermission.startsWith('org.') && p === 'org:manage')
+          return true;
+        if (requiredPermission.startsWith('repo.') && p === 'repo:read')
+          return false; // too broad
         return false;
       });
 

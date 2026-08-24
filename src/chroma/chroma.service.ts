@@ -273,16 +273,13 @@ export class ChromaService {
         `Fetching ${ids.length} chunk(s) by id from ${collectionName}`,
       );
       const result = await collection.get({
-        ids: ids as [`${string}:${string}`, ...`${string}:${string}`[]],
+        ids: ids,
         include: ['documents', 'metadatas'],
       });
       return {
         ids: result.ids ?? [],
-        documents: (result.documents ?? []) as (string | null)[],
-        metadatas: (result.metadatas ?? []) as (
-          | Record<string, unknown>
-          | null
-        )[],
+        documents: result.documents ?? [],
+        metadatas: result.metadatas ?? [],
       };
     } catch (error) {
       this.logger.error(

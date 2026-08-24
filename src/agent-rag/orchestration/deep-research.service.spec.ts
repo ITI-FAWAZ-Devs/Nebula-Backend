@@ -20,7 +20,11 @@ describe('DeepResearchService', () => {
 
   beforeEach(async () => {
     geminiMock = {
-      generateContent: jest.fn().mockResolvedValue('["How is auth started?", "How are tokens generated?"]'),
+      generateContent: jest
+        .fn()
+        .mockResolvedValue(
+          '["How is auth started?", "How are tokens generated?"]',
+        ),
     };
     plannerMock = {
       plan: jest.fn().mockResolvedValue({ functionCalls: [] }),
@@ -66,7 +70,9 @@ describe('DeepResearchService', () => {
           type: 'done',
           data: {
             answer: 'Deep answer',
-            citations: [{ filePath: 'src/auth.ts', lineRange: null, nodeId: 'node-1' }],
+            citations: [
+              { filePath: 'src/auth.ts', lineRange: null, nodeId: 'node-1' },
+            ],
           },
         };
       }),

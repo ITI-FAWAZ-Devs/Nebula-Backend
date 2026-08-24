@@ -99,13 +99,14 @@ export class AgentLoopService {
 
     const { contextText, selectedHits } = this.contextBuilder.build(collected);
     const webContextBlock = this.formatWebContext(allWebResults);
-    const { answer, citations: rawCitations } = await this.synthesizer.synthesize(
-      params.question,
-      contextText + webContextBlock,
-      selectedHits,
-      params.responseStyle,
-      params.model,
-    );
+    const { answer, citations: rawCitations } =
+      await this.synthesizer.synthesize(
+        params.question,
+        contextText + webContextBlock,
+        selectedHits,
+        params.responseStyle,
+        params.model,
+      );
     const citations = await this.snippets.enrich(
       params.repositoryId,
       rawCitations,
@@ -157,7 +158,15 @@ export class AgentLoopService {
     responseStyle?: 'text' | 'voice';
     model?: string;
   }): AsyncGenerator<{
-    event: 'mode' | 'scanning' | 'web_source' | 'token' | 'citation' | 'done' | 'followups' | 'error';
+    event:
+      | 'mode'
+      | 'scanning'
+      | 'web_source'
+      | 'token'
+      | 'citation'
+      | 'done'
+      | 'followups'
+      | 'error';
     data: unknown;
   }> {
     try {
@@ -175,7 +184,10 @@ export class AgentLoopService {
           yield { event: 'mode', data: 'standard' };
           for (const c of cached.citations) {
             if (c.filePath) {
-              yield { event: 'scanning', data: { filePath: c.filePath, tool: 'cache' } };
+              yield {
+                event: 'scanning',
+                data: { filePath: c.filePath, tool: 'cache' },
+              };
             }
           }
           for (const c of cached.citations) {
@@ -210,7 +222,10 @@ export class AgentLoopService {
           );
           for (const c of fastCitations) {
             if (c.filePath) {
-              yield { event: 'scanning', data: { filePath: c.filePath, tool: 'fast_answer_wiki' } };
+              yield {
+                event: 'scanning',
+                data: { filePath: c.filePath, tool: 'fast_answer_wiki' },
+              };
             }
           }
           for (const c of fastCitations) {
@@ -272,7 +287,10 @@ export class AgentLoopService {
         for (const hit of executed.hits) {
           if (hit.filePath && !scannedFiles.has(hit.filePath)) {
             scannedFiles.add(hit.filePath);
-            yield { event: 'scanning', data: { filePath: hit.filePath, tool: repoTool } };
+            yield {
+              event: 'scanning',
+              data: { filePath: hit.filePath, tool: repoTool },
+            };
           }
         }
 
@@ -292,7 +310,10 @@ export class AgentLoopService {
         for (const hit of executed.hits) {
           if (hit.filePath && !scannedFiles.has(hit.filePath)) {
             scannedFiles.add(hit.filePath);
-            yield { event: 'scanning', data: { filePath: hit.filePath, tool: 'hybrid_search' } };
+            yield {
+              event: 'scanning',
+              data: { filePath: hit.filePath, tool: 'hybrid_search' },
+            };
           }
         }
       }

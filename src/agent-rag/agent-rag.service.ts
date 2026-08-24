@@ -140,7 +140,9 @@ export class AgentRagService {
         },
       });
       if (!isMember) {
-        throw new ForbiddenException('You do not have access to this repository');
+        throw new ForbiddenException(
+          'You do not have access to this repository',
+        );
       }
     } else if (repository.userId !== userId) {
       throw new ForbiddenException('You do not own this repository');

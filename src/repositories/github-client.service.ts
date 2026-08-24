@@ -40,7 +40,11 @@ export class GithubClientService {
     filters?: GitHubRepoFilters,
   ): Promise<GitHubRepoDetails[]> {
     // Raw fetch is cached without filters; filtering is applied after cache lookup
-    const cacheKey = [userId, connectionId ?? 'all', organizationId ?? 'personal'].join(':');
+    const cacheKey = [
+      userId,
+      connectionId ?? 'all',
+      organizationId ?? 'personal',
+    ].join(':');
     if (!forceRefresh) {
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
@@ -122,11 +126,6 @@ export class GithubClientService {
     }
 
     const rawToken = await this.connectionsService.getDecryptedToken(conn.id);
-    return this.githubAdapter.getLatestCommitSha(
-      rawToken,
-      owner,
-      repo,
-      branch,
-    );
+    return this.githubAdapter.getLatestCommitSha(rawToken, owner, repo, branch);
   }
 }

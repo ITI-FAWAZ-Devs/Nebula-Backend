@@ -5,7 +5,11 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { DocStatus, RepositoryStatus, ConnectionProvider } from '@prisma/client';
+import {
+  DocStatus,
+  RepositoryStatus,
+  ConnectionProvider,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ImportRepoDto } from './dto/import-repo.dto';
 import { ImportFromUrlDto } from './dto/import-url.dto';
@@ -29,11 +33,10 @@ export class RepositoriesService {
   async importRepository(userId: string, dto: ImportRepoDto) {
     // If org-scoped, verify the user has repo:import permission
     if (dto.organizationId) {
-      const permissions =
-        await this.organizationsService.getMemberPermissions(
-          userId,
-          dto.organizationId,
-        );
+      const permissions = await this.organizationsService.getMemberPermissions(
+        userId,
+        dto.organizationId,
+      );
       if (!permissions || !permissions.includes('repo.process')) {
         throw new ForbiddenException(
           'You do not have permission to import repositories in this organization',
@@ -44,12 +47,14 @@ export class RepositoriesService {
     // Resolve connection: explicit → org default → user default
     let connectionId = dto.connectionId;
     if (!connectionId) {
-      const resolved = await this.connectionsService.resolveTokenForRepo({
-        userId,
-        orgId: dto.organizationId,
-        isPrivate: dto.isPrivate,
-        provider: ConnectionProvider.GITHUB,
-      }).catch(() => null);
+      const resolved = await this.connectionsService
+        .resolveTokenForRepo({
+          userId,
+          orgId: dto.organizationId,
+          isPrivate: dto.isPrivate,
+          provider: ConnectionProvider.GITHUB,
+        })
+        .catch(() => null);
       // resolveTokenForRepo returns the token, but we need the connectionId — look it up
       if (dto.organizationId) {
         const orgConn = await this.connectionsService.findDefaultOrgConnection(
@@ -59,10 +64,11 @@ export class RepositoriesService {
         if (orgConn) connectionId = orgConn.id;
       }
       if (!connectionId) {
-        const userConn = await this.connectionsService.findDefaultUserConnection(
-          userId,
-          ConnectionProvider.GITHUB,
-        );
+        const userConn =
+          await this.connectionsService.findDefaultUserConnection(
+            userId,
+            ConnectionProvider.GITHUB,
+          );
         if (userConn) connectionId = userConn.id;
       }
     }
@@ -126,11 +132,10 @@ export class RepositoriesService {
    */
   async importFromUrl(userId: string, dto: ImportFromUrlDto) {
     if (dto.organizationId) {
-      const permissions =
-        await this.organizationsService.getMemberPermissions(
-          userId,
-          dto.organizationId,
-        );
+      const permissions = await this.organizationsService.getMemberPermissions(
+        userId,
+        dto.organizationId,
+      );
       if (!permissions || !permissions.includes('repo.process')) {
         throw new ForbiddenException(
           'You do not have permission to import repositories in this organization',
@@ -162,10 +167,11 @@ export class RepositoriesService {
         if (orgConn) connectionId = orgConn.id;
       }
       if (!connectionId) {
-        const userConn = await this.connectionsService.findDefaultUserConnection(
-          userId,
-          provider,
-        );
+        const userConn =
+          await this.connectionsService.findDefaultUserConnection(
+            userId,
+            provider,
+          );
         if (userConn) connectionId = userConn.id;
       }
     }
@@ -271,10 +277,7 @@ export class RepositoriesService {
 
     const repos = await this.prisma.repository.findMany({
       where: {
-        OR: [
-          { userId },
-          { organizationId: { in: orgIds } },
-        ],
+        OR: [{ userId }, { organizationId: { in: orgIds } }],
       },
       select: { id: true },
     });
@@ -358,15 +361,11 @@ export class RepositoriesService {
 
     // Check access: personal repo owner or org member with permissions
     if (repo.organizationId) {
-      const permissions =
-        await this.organizationsService.getMemberPermissions(
-          userId,
-          repo.organizationId,
-        );
-      if (
-        !permissions ||
-        !permissions.includes('repo.delete')
-      ) {
+      const permissions = await this.organizationsService.getMemberPermissions(
+        userId,
+        repo.organizationId,
+      );
+      if (!permissions || !permissions.includes('repo.delete')) {
         throw new ForbiddenException(
           'You do not have permission to delete repositories in this organization',
         );
@@ -414,4 +413,3 @@ export class RepositoriesService {
     return repo;
   }
 }
-

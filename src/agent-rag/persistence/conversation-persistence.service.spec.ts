@@ -48,7 +48,11 @@ describe('ConversationPersistenceService', () => {
     expect(prismaMock.conversationThread.create).toHaveBeenCalled();
     expect(prismaMock.conversationMessage.createMany).toHaveBeenCalledWith({
       data: [
-        { threadId: 'thread-1', role: 'user', content: 'How does routing work?' },
+        {
+          threadId: 'thread-1',
+          role: 'user',
+          content: 'How does routing work?',
+        },
         {
           threadId: 'thread-1',
           role: 'assistant',
@@ -67,12 +71,28 @@ describe('ConversationPersistenceService', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       messages: [
-        { id: 'm1', role: 'user', content: 'Q', citations: null, createdAt: new Date() },
-        { id: 'm2', role: 'assistant', content: 'A', citations: [], createdAt: new Date() },
+        {
+          id: 'm1',
+          role: 'user',
+          content: 'Q',
+          citations: null,
+          createdAt: new Date(),
+        },
+        {
+          id: 'm2',
+          role: 'assistant',
+          content: 'A',
+          citations: [],
+          createdAt: new Date(),
+        },
       ],
     });
 
-    const thread = await service.getThreadDetails('user-1', 'repo-1', 'thread-1');
+    const thread = await service.getThreadDetails(
+      'user-1',
+      'repo-1',
+      'thread-1',
+    );
     expect(thread.id).toBe('thread-1');
     expect(thread.messages).toHaveLength(2);
   });

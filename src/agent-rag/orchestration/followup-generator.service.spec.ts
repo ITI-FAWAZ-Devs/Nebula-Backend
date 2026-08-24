@@ -29,7 +29,10 @@ describe('FollowupGeneratorService', () => {
       '["Question 1?", "Question 2?", "Question 3?"]',
     );
 
-    const result = await service.generate('What is auth?', 'Auth works using JWT tokens.');
+    const result = await service.generate(
+      'What is auth?',
+      'Auth works using JWT tokens.',
+    );
     expect(result).toEqual(['Question 1?', 'Question 2?', 'Question 3?']);
   });
 
@@ -38,14 +41,20 @@ describe('FollowupGeneratorService', () => {
       '```json\n["Question 1?", "Question 2?", "Question 3?"]\n```',
     );
 
-    const result = await service.generate('What is auth?', 'Auth works using JWT tokens.');
+    const result = await service.generate(
+      'What is auth?',
+      'Auth works using JWT tokens.',
+    );
     expect(result).toEqual(['Question 1?', 'Question 2?', 'Question 3?']);
   });
 
   it('should return empty array on invalid response or JSON parse error', async () => {
     mockGemini.generateContent.mockResolvedValue('Not JSON');
 
-    const result = await service.generate('What is auth?', 'Auth works using JWT tokens.');
+    const result = await service.generate(
+      'What is auth?',
+      'Auth works using JWT tokens.',
+    );
     expect(result).toEqual([]);
   });
 });

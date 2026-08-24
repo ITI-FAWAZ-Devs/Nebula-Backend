@@ -49,13 +49,13 @@ describe('ExecutorService', () => {
     ]);
 
     const result = await service.execute('repo-1', [
-      { name: 'web_search', args: { query: 'electron multi-process', maxResults: 3 } },
+      {
+        name: 'web_search',
+        args: { query: 'electron multi-process', maxResults: 3 },
+      },
     ]);
 
-    expect(tavilyMock.search).toHaveBeenCalledWith(
-      'electron multi-process',
-      3,
-    );
+    expect(tavilyMock.search).toHaveBeenCalledWith('electron multi-process', 3);
     expect(result.hits).toEqual([]);
     expect(result.toolsUsed).toEqual(['web_search']);
     expect(result.webResults).toHaveLength(1);

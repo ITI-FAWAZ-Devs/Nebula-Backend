@@ -412,7 +412,10 @@ export class DocumentationPipeline {
     const repositoryName = `${repository.owner}/${repository.name}`;
 
     // Collect unique (userId → user) entries to notify
-    const recipientMap = new Map<string, { email: string; fullName: string | null }>();
+    const recipientMap = new Map<
+      string,
+      { email: string; fullName: string | null }
+    >();
 
     // 1. Triggering user (developer who started the job)
     const triggeringUser = await this.prisma.user.findUnique({

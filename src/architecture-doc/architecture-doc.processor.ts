@@ -271,7 +271,10 @@ export class ArchitectureDocProcessor extends WorkerHost {
     const repositoryName = `${repository.owner}/${repository.name}`;
 
     // Collect unique recipients: triggering user, repo owner, org owner
-    const recipientMap = new Map<string, { email: string; fullName: string | null }>();
+    const recipientMap = new Map<
+      string,
+      { email: string; fullName: string | null }
+    >();
 
     // 1. Triggering user (developer who started the job)
     const triggeringUser = await this.prisma.user.findUnique({

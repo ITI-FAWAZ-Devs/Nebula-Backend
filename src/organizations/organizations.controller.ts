@@ -28,7 +28,13 @@ import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectionsService } from '../connections/connections.service';
 import { CreateConnectionDto } from '../connections/dto/create-connection.dto';
-import { IsString, IsNotEmpty, IsArray, IsOptional, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  IsOptional,
+  IsUUID,
+} from 'class-validator';
 
 class CreateTeamDto {
   @IsString() @IsNotEmpty() name: string;
@@ -69,14 +75,25 @@ export class OrganizationsController {
     @CurrentUser('id') userId: string,
     @Body() dto: CreateOrganizationDto,
   ) {
-    const org = await this.organizationsService.createOrganization(userId, dto.name);
-    return { success: true, message: 'Organization created successfully', data: org };
+    const org = await this.organizationsService.createOrganization(
+      userId,
+      dto.name,
+    );
+    return {
+      success: true,
+      message: 'Organization created successfully',
+      data: org,
+    };
   }
 
   @Get()
   async listOrganizations(@CurrentUser('id') userId: string) {
     const orgs = await this.organizationsService.listUserOrganizations(userId);
-    return { success: true, message: 'Organizations retrieved successfully', data: orgs };
+    return {
+      success: true,
+      message: 'Organizations retrieved successfully',
+      data: orgs,
+    };
   }
 
   @Get(':id')
@@ -85,7 +102,11 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     const org = await this.organizationsService.getOrganization(id, userId);
-    return { success: true, message: 'Organization retrieved successfully', data: org };
+    return {
+      success: true,
+      message: 'Organization retrieved successfully',
+      data: org,
+    };
   }
 
   @Patch(':id')
@@ -96,8 +117,16 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RenameOrgDto,
   ) {
-    const org = await this.organizationsService.renameOrganization(id, userId, dto.name);
-    return { success: true, message: 'Organization updated successfully', data: org };
+    const org = await this.organizationsService.renameOrganization(
+      id,
+      userId,
+      dto.name,
+    );
+    return {
+      success: true,
+      message: 'Organization updated successfully',
+      data: org,
+    };
   }
 
   @Delete(':id')
@@ -107,8 +136,15 @@ export class OrganizationsController {
     @CurrentUser('id') userId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const result = await this.organizationsService.deleteOrganization(id, userId);
-    return { success: true, message: 'Organization deleted successfully', data: result };
+    const result = await this.organizationsService.deleteOrganization(
+      id,
+      userId,
+    );
+    return {
+      success: true,
+      message: 'Organization deleted successfully',
+      data: result,
+    };
   }
 
   // ── Role Management ──
@@ -121,7 +157,11 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) orgId: string,
     @Body() dto: CreateRoleDto,
   ) {
-    const role = await this.organizationsService.createRole(orgId, dto.name, dto.permissions);
+    const role = await this.organizationsService.createRole(
+      orgId,
+      dto.name,
+      dto.permissions,
+    );
     return { success: true, message: 'Role created successfully', data: role };
   }
 
@@ -132,7 +172,11 @@ export class OrganizationsController {
   ) {
     await this.organizationsService.getOrganization(orgId, userId);
     const roles = await this.organizationsService.listRoles(orgId);
-    return { success: true, message: 'Roles retrieved successfully', data: roles };
+    return {
+      success: true,
+      message: 'Roles retrieved successfully',
+      data: roles,
+    };
   }
 
   @Patch(':id/roles/:roleId')
@@ -151,7 +195,11 @@ export class OrganizationsController {
   @RequirePermission(Permission.ORG_MANAGE_ROLES)
   async deleteRole(@Param('roleId', ParseUUIDPipe) roleId: string) {
     const result = await this.organizationsService.deleteRole(roleId);
-    return { success: true, message: 'Role deleted successfully', data: result };
+    return {
+      success: true,
+      message: 'Role deleted successfully',
+      data: result,
+    };
   }
 
   // ── Member Management ──
@@ -165,7 +213,12 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) orgId: string,
     @Body() dto: InviteMemberDto,
   ) {
-    const member = await this.organizationsService.inviteMember(orgId, dto.email, dto.roleId, userId);
+    const member = await this.organizationsService.inviteMember(
+      orgId,
+      dto.email,
+      dto.roleId,
+      userId,
+    );
 
     try {
       const inviter = await this.prisma.user.findUnique({
@@ -191,7 +244,11 @@ export class OrganizationsController {
     return {
       success: true,
       message: 'Invitation sent',
-      data: { id: member.id, status: member.status, inviteToken: member.inviteToken },
+      data: {
+        id: member.id,
+        status: member.status,
+        inviteToken: member.inviteToken,
+      },
     };
   }
 
@@ -204,7 +261,11 @@ export class OrganizationsController {
     return {
       success: true,
       message: 'You have joined the organization',
-      data: { orgId: member.orgId, status: member.status, joinedAt: member.joinedAt },
+      data: {
+        orgId: member.orgId,
+        status: member.status,
+        joinedAt: member.joinedAt,
+      },
     };
   }
 
@@ -215,7 +276,11 @@ export class OrganizationsController {
   ) {
     await this.organizationsService.getOrganization(orgId, userId);
     const members = await this.organizationsService.listMembers(orgId);
-    return { success: true, message: 'Members retrieved successfully', data: members };
+    return {
+      success: true,
+      message: 'Members retrieved successfully',
+      data: members,
+    };
   }
 
   @Patch(':id/members/:memberId')
@@ -226,8 +291,16 @@ export class OrganizationsController {
     @Param('memberId', ParseUUIDPipe) memberId: string,
     @Body() dto: ChangeMemberRoleDto,
   ) {
-    const member = await this.organizationsService.changeMemberRole(memberId, dto.roleId, orgId);
-    return { success: true, message: 'Member role updated successfully', data: member };
+    const member = await this.organizationsService.changeMemberRole(
+      memberId,
+      dto.roleId,
+      orgId,
+    );
+    return {
+      success: true,
+      message: 'Member role updated successfully',
+      data: member,
+    };
   }
 
   @Delete(':id/members/:memberId')
@@ -237,8 +310,15 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) orgId: string,
     @Param('memberId', ParseUUIDPipe) memberId: string,
   ) {
-    const result = await this.organizationsService.removeMember(memberId, orgId);
-    return { success: true, message: 'Member removed successfully', data: result };
+    const result = await this.organizationsService.removeMember(
+      memberId,
+      orgId,
+    );
+    return {
+      success: true,
+      message: 'Member removed successfully',
+      data: result,
+    };
   }
 
   // ── Teams ──
@@ -252,7 +332,11 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) orgId: string,
     @Body() dto: CreateTeamDto,
   ) {
-    const team = await this.organizationsService.createTeam(orgId, dto.name, userId);
+    const team = await this.organizationsService.createTeam(
+      orgId,
+      dto.name,
+      userId,
+    );
     return { success: true, message: 'Team created successfully', data: team };
   }
 
@@ -263,7 +347,11 @@ export class OrganizationsController {
   ) {
     await this.organizationsService.getOrganization(orgId, userId);
     const teams = await this.organizationsService.listTeams(orgId);
-    return { success: true, message: 'Teams retrieved successfully', data: teams };
+    return {
+      success: true,
+      message: 'Teams retrieved successfully',
+      data: teams,
+    };
   }
 
   @Delete(':id/teams/:teamId')
@@ -286,7 +374,11 @@ export class OrganizationsController {
     @Param('teamId', ParseUUIDPipe) teamId: string,
     @Body() dto: AddTeamMemberDto,
   ) {
-    const member = await this.organizationsService.addTeamMember(teamId, dto.userId, orgId);
+    const member = await this.organizationsService.addTeamMember(
+      teamId,
+      dto.userId,
+      orgId,
+    );
     return { success: true, message: 'Member added to team', data: member };
   }
 
@@ -298,7 +390,11 @@ export class OrganizationsController {
     @Param('teamId', ParseUUIDPipe) teamId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    const result = await this.organizationsService.removeTeamMember(teamId, userId, orgId);
+    const result = await this.organizationsService.removeTeamMember(
+      teamId,
+      userId,
+      orgId,
+    );
     return { success: true, message: 'Member removed from team', data: result };
   }
 
@@ -312,9 +408,16 @@ export class OrganizationsController {
     @Body() dto: TeamRepositoryDto,
   ) {
     const result = await this.organizationsService.addTeamRepository(
-      teamId, dto.repositoryId, dto.permissions, orgId,
+      teamId,
+      dto.repositoryId,
+      dto.permissions,
+      orgId,
     );
-    return { success: true, message: 'Repository attached to team', data: result };
+    return {
+      success: true,
+      message: 'Repository attached to team',
+      data: result,
+    };
   }
 
   @Delete(':id/teams/:teamId/repositories/:repositoryId')
@@ -325,8 +428,16 @@ export class OrganizationsController {
     @Param('teamId', ParseUUIDPipe) teamId: string,
     @Param('repositoryId', ParseUUIDPipe) repositoryId: string,
   ) {
-    const result = await this.organizationsService.removeTeamRepository(teamId, repositoryId, orgId);
-    return { success: true, message: 'Repository removed from team', data: result };
+    const result = await this.organizationsService.removeTeamRepository(
+      teamId,
+      repositoryId,
+      orgId,
+    );
+    return {
+      success: true,
+      message: 'Repository removed from team',
+      data: result,
+    };
   }
 
   // ── Repository Member Access ──
@@ -338,8 +449,15 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) orgId: string,
     @Param('repoId', ParseUUIDPipe) repoId: string,
   ) {
-    const members = await this.organizationsService.listRepositoryMembers(repoId, orgId);
-    return { success: true, message: 'Repository members retrieved', data: members };
+    const members = await this.organizationsService.listRepositoryMembers(
+      repoId,
+      orgId,
+    );
+    return {
+      success: true,
+      message: 'Repository members retrieved',
+      data: members,
+    };
   }
 
   @Post(':id/repositories/:repoId/members')
@@ -351,8 +469,17 @@ export class OrganizationsController {
     @Param('repoId', ParseUUIDPipe) repoId: string,
     @Body() dto: SetRepoMemberDto,
   ) {
-    const result = await this.organizationsService.setRepositoryMember(repoId, dto.userId, dto.permissions, orgId);
-    return { success: true, message: 'Repository access updated', data: result };
+    const result = await this.organizationsService.setRepositoryMember(
+      repoId,
+      dto.userId,
+      dto.permissions,
+      orgId,
+    );
+    return {
+      success: true,
+      message: 'Repository access updated',
+      data: result,
+    };
   }
 
   @Delete(':id/repositories/:repoId/members/:userId')
@@ -363,8 +490,16 @@ export class OrganizationsController {
     @Param('repoId', ParseUUIDPipe) repoId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    const result = await this.organizationsService.removeRepositoryMember(repoId, userId, orgId);
-    return { success: true, message: 'Repository access removed', data: result };
+    const result = await this.organizationsService.removeRepositoryMember(
+      repoId,
+      userId,
+      orgId,
+    );
+    return {
+      success: true,
+      message: 'Repository access removed',
+      data: result,
+    };
   }
 
   // ── Organization Repositories ──
@@ -379,7 +514,11 @@ export class OrganizationsController {
       where: { organizationId: orgId },
       orderBy: { createdAt: 'desc' },
     });
-    return { success: true, message: 'Organization repositories retrieved successfully', data: repos };
+    return {
+      success: true,
+      message: 'Organization repositories retrieved successfully',
+      data: repos,
+    };
   }
 
   // ── Organization Connections ──
@@ -393,9 +532,17 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) orgId: string,
     @Body() dto: CreateConnectionDto,
   ) {
-    const connection = await this.connectionsService.createOrgConnection(userId, orgId, dto);
+    const connection = await this.connectionsService.createOrgConnection(
+      userId,
+      orgId,
+      dto,
+    );
     const { encryptedToken, ...safeData } = connection;
-    return { success: true, message: 'Organization connection created successfully', data: safeData };
+    return {
+      success: true,
+      message: 'Organization connection created successfully',
+      data: safeData,
+    };
   }
 
   @Get(':id/connections')
@@ -405,7 +552,11 @@ export class OrganizationsController {
   ) {
     await this.organizationsService.getOrganization(orgId, userId);
     const connections = await this.connectionsService.listOrgConnections(orgId);
-    return { success: true, message: 'Organization connections retrieved successfully', data: connections };
+    return {
+      success: true,
+      message: 'Organization connections retrieved successfully',
+      data: connections,
+    };
   }
 
   @Delete(':id/connections/:connId')
@@ -416,7 +567,10 @@ export class OrganizationsController {
     @Param('connId', ParseUUIDPipe) connId: string,
   ) {
     await this.connectionsService.deleteOrgConnection(connId, orgId);
-    return { success: true, message: 'Organization connection deleted successfully' };
+    return {
+      success: true,
+      message: 'Organization connection deleted successfully',
+    };
   }
 
   // ── Audit Logs ──
@@ -431,7 +585,11 @@ export class OrganizationsController {
     @Query('cursor') cursor?: string,
   ) {
     await this.organizationsService.getOrganization(orgId, userId);
-    const logs = await this.organizationsService.getAuditLogs(orgId, limit, cursor);
+    const logs = await this.organizationsService.getAuditLogs(
+      orgId,
+      limit,
+      cursor,
+    );
     return { success: true, message: 'Audit logs retrieved', data: logs };
   }
 }

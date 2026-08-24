@@ -8,7 +8,10 @@ const MAX_CODE_FILES = 25;
 const MAX_CODE_CHARS_PER_FILE = 4000;
 const MAX_TOTAL_CODE_CHARS = 30000;
 
-function truncateWithCount<T>(items: T[], max: number): { items: T[]; omitted: number } {
+function truncateWithCount<T>(
+  items: T[],
+  max: number,
+): { items: T[]; omitted: number } {
   if (items.length <= max) return { items, omitted: 0 };
   return { items: items.slice(0, max), omitted: items.length - max };
 }
@@ -35,17 +38,39 @@ function safeFence(content: string): string {
 function languageFromPath(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase();
   const known: Record<string, string> = {
-    ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx',
-    py: 'python', go: 'go', rb: 'ruby', java: 'java', cs: 'csharp',
-    rs: 'rust', php: 'php', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
-    json: 'json', yaml: 'yaml', yml: 'yaml', sql: 'sql', sh: 'bash',
+    ts: 'typescript',
+    tsx: 'tsx',
+    js: 'javascript',
+    jsx: 'jsx',
+    py: 'python',
+    go: 'go',
+    rb: 'ruby',
+    java: 'java',
+    cs: 'csharp',
+    rs: 'rust',
+    php: 'php',
+    c: 'c',
+    cpp: 'cpp',
+    h: 'c',
+    hpp: 'cpp',
+    json: 'json',
+    yaml: 'yaml',
+    yml: 'yaml',
+    sql: 'sql',
+    sh: 'bash',
   };
   return (ext && known[ext]) || 'text';
 }
 
-function truncateCode(content: string, maxChars: number): { text: string; truncated: boolean } {
+function truncateCode(
+  content: string,
+  maxChars: number,
+): { text: string; truncated: boolean } {
   if (content.length <= maxChars) return { text: content, truncated: false };
-  return { text: `${content.slice(0, maxChars)}\n// ... [truncated, ${content.length - maxChars} more characters]`, truncated: true };
+  return {
+    text: `${content.slice(0, maxChars)}\n// ... [truncated, ${content.length - maxChars} more characters]`,
+    truncated: true,
+  };
 }
 
 export function buildSectionGenerationPrompt(
@@ -59,32 +84,39 @@ export function buildSectionGenerationPrompt(
   const fileList =
     cappedFiles
       .map((f) => `- ${f.filePath}${f.description ? `: ${f.description}` : ''}`)
-      .join('\n') + (omittedFiles > 0 ? `\n- ...and ${omittedFiles} more file(s), omitted for brevity` : '');
+      .join('\n') +
+    (omittedFiles > 0
+      ? `\n- ...and ${omittedFiles} more file(s), omitted for brevity`
+      : '');
 
   const dedupedRelationships = dedupeRelationships(context.relationships);
-  const { items: cappedRelationships, omitted: omittedRelationships } = truncateWithCount(
-    dedupedRelationships,
-    MAX_RELATIONSHIPS_LISTED,
-  );
+  const { items: cappedRelationships, omitted: omittedRelationships } =
+    truncateWithCount(dedupedRelationships, MAX_RELATIONSHIPS_LISTED);
   const relationshipList =
     cappedRelationships
       .map((r) => `- ${r.fromFilePath} -> ${r.toFilePath} (${r.type})`)
       .join('\n') +
-    (omittedRelationships > 0 ? `\n- ...and ${omittedRelationships} more relationship(s), omitted for brevity` : '');
+    (omittedRelationships > 0
+      ? `\n- ...and ${omittedRelationships} more relationship(s), omitted for brevity`
+      : '');
 
   const { items: cappedClusters, omitted: omittedClusters } = truncateWithCount(
     context.moduleClusters,
     MAX_CLUSTERS_LISTED,
   );
   const clusterList =
-    cappedClusters.map((c) => `- ${c.name}: ${c.filePaths.join(', ')}`).join('\n') +
-    (omittedClusters > 0 ? `\n- ...and ${omittedClusters} more cluster(s), omitted for brevity` : '');
+    cappedClusters
+      .map((c) => `- ${c.name}: ${c.filePaths.join(', ')}`)
+      .join('\n') +
+    (omittedClusters > 0
+      ? `\n- ...and ${omittedClusters} more cluster(s), omitted for brevity`
+      : '');
 
-  const filesWithCode = context.files.filter((f) => f.codeContent || f.codeLoadError);
-  const { items: cappedCodeFiles, omitted: omittedCodeFiles } = truncateWithCount(
-    filesWithCode,
-    MAX_CODE_FILES,
+  const filesWithCode = context.files.filter(
+    (f) => f.codeContent || f.codeLoadError,
   );
+  const { items: cappedCodeFiles, omitted: omittedCodeFiles } =
+    truncateWithCount(filesWithCode, MAX_CODE_FILES);
 
   let remainingCodeBudget = MAX_TOTAL_CODE_CHARS;
   const codeEvidence =
@@ -94,7 +126,10 @@ export function buildSectionGenerationPrompt(
         if (f.codeLoadError) {
           return `${label}\n[code unavailable: ${f.codeLoadError}]`;
         }
-        const perFileCap = Math.max(0, Math.min(MAX_CODE_CHARS_PER_FILE, remainingCodeBudget));
+        const perFileCap = Math.max(
+          0,
+          Math.min(MAX_CODE_CHARS_PER_FILE, remainingCodeBudget),
+        );
         if (perFileCap === 0) {
           return `${label}\n[code omitted: total code evidence budget exhausted]`;
         }

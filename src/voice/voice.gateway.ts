@@ -96,7 +96,9 @@ export class VoiceGateway implements OnGatewayConnection, OnGatewayDisconnect {
       );
 
       await session.startListening();
-      this.logger.log(`Voice session started: ${client.id} repo=${data.repositoryId}`);
+      this.logger.log(
+        `Voice session started: ${client.id} repo=${data.repositoryId}`,
+      );
     } catch (err) {
       const msg = (err as Error).message ?? 'Failed to start session';
       client.emit('error', { message: msg });
@@ -155,7 +157,9 @@ export class VoiceGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private requireSession(client: Socket): VoiceSession | null {
     const session = this.voiceAgentService.getSession(client.id);
     if (!session) {
-      client.emit('error', { message: 'No active voice session. Send session.start first.' });
+      client.emit('error', {
+        message: 'No active voice session. Send session.start first.',
+      });
       return null;
     }
     return session;
@@ -181,16 +185,12 @@ export class VoiceGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (fromAuth) return fromAuth;
 
     // 2. Authorization: Bearer header
-    const bearerHeader = client.handshake.headers.authorization as
-      | string
-      | undefined;
-    const fromBearer = verify(
-      bearerHeader?.replace(/^Bearer\s+/i, ''),
-    );
+    const bearerHeader = client.handshake.headers.authorization;
+    const fromBearer = verify(bearerHeader?.replace(/^Bearer\s+/i, ''));
     if (fromBearer) return fromBearer;
 
     // 3. nebula_access_token HttpOnly cookie sent with the WS upgrade request
-    const cookieHeader = client.handshake.headers.cookie as string | undefined;
+    const cookieHeader = client.handshake.headers.cookie;
     if (cookieHeader) {
       for (const part of cookieHeader.split(';')) {
         const trimmed = part.trim();

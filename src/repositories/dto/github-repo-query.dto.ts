@@ -51,4 +51,3 @@ export class GithubRepoQueryDto {
   @IsIn(['name', 'updated'])
   sort?: 'name' | 'updated';
 }
-

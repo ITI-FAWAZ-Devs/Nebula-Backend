@@ -54,6 +54,7 @@ const GRAPH_TOOL_MAX_NODES_PER_HOP = 25;
 /** Allowlisted node labels sourced from EntityType */
 const VALID_LABELS = new Set<string>([
   'Repository',
+  'Module',
   'Directory',
   'File',
   'Class',
@@ -65,6 +66,7 @@ const VALID_LABELS = new Set<string>([
 /** Allowlisted relationship types sourced from RelationshipType */
 const VALID_REL_TYPES = new Set<string>([
   'CONTAINS',
+  'HAS_MODULE',
   'IMPORTS',
   'CALLS',
   'EXTENDS',

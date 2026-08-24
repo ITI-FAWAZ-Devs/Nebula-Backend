@@ -1,5 +1,6 @@
 export type RelationshipType =
   | 'CONTAINS'
+  | 'HAS_MODULE'
   | 'IMPORTS'
   | 'CALLS'
   | 'EXTENDS'

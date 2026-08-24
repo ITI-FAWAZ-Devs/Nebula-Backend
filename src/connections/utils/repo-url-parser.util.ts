@@ -75,7 +75,9 @@ export function parseRepoUrl(input: string): ParsedRepoUrl {
   const repo = parts[1];
 
   if (!owner || !repo) {
-    throw new BadRequestException(`Invalid owner or repository name in: "${input}".`);
+    throw new BadRequestException(
+      `Invalid owner or repository name in: "${input}".`,
+    );
   }
 
   return { provider, owner, repo };

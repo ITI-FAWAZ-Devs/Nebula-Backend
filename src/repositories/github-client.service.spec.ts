@@ -68,12 +68,9 @@ describe('GithubClientService', () => {
         isPrivate: false,
         cloneUrl: 'https://github.com/owner-1/repo-1.git',
       });
-      expect(mockConnectionsService.fetchRemoteRepositories).toHaveBeenCalledWith(
-        'user-123',
-        undefined,
-        'GITHUB',
-        undefined,
-      );
+      expect(
+        mockConnectionsService.fetchRemoteRepositories,
+      ).toHaveBeenCalledWith('user-123', undefined, 'GITHUB', undefined);
     });
 
     it('should throw BadRequestException if no active connection exists', async () => {

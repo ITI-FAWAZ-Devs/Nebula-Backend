@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { FastAnswerService, ARCHITECTURE_DOCS_COLLECTION } from './fast-answer.service';
+import {
+  FastAnswerService,
+  ARCHITECTURE_DOCS_COLLECTION,
+} from './fast-answer.service';
 import { AiProviderService } from '../../ai-provider/ai-provider.service';
 import { ChromaService } from '../../chroma/chroma.service';
 import { FAST_ANSWER_SIMILARITY_THRESHOLD } from '../agent-rag.constants';
@@ -36,7 +39,10 @@ describe('FastAnswerService', () => {
 
   it('returns null if collection does not exist', async () => {
     (chromaServiceMock.collectionExists as jest.Mock).mockResolvedValue(false);
-    const result = await service.findFastAnswer('repo-1', 'What is authentication?');
+    const result = await service.findFastAnswer(
+      'repo-1',
+      'What is authentication?',
+    );
     expect(result).toBeNull();
   });
 
@@ -45,11 +51,22 @@ describe('FastAnswerService', () => {
     (chromaServiceMock.queryCollection as jest.Mock).mockResolvedValue({
       ids: [['doc1_sec1']],
       documents: [['# Auth System\n\nHandles JWT authentication.']],
-      metadatas: [[{ sectionTitle: 'Auth System', sectionKey: 'sec1', sourceFiles: 'src/auth.ts, src/jwt.ts' }]],
+      metadatas: [
+        [
+          {
+            sectionTitle: 'Auth System',
+            sectionKey: 'sec1',
+            sourceFiles: 'src/auth.ts, src/jwt.ts',
+          },
+        ],
+      ],
       distances: [[0.05]],
     });
 
-    const result = await service.findFastAnswer('repo-1', 'What is authentication?');
+    const result = await service.findFastAnswer(
+      'repo-1',
+      'What is authentication?',
+    );
 
     expect(result).not.toBeNull();
     expect(result?.answer).toContain('Handles JWT authentication');
@@ -67,7 +84,10 @@ describe('FastAnswerService', () => {
       distances: [[0.5]],
     });
 
-    const result = await service.findFastAnswer('repo-1', 'What is authentication?');
+    const result = await service.findFastAnswer(
+      'repo-1',
+      'What is authentication?',
+    );
     expect(result).toBeNull();
   });
 });

@@ -10,6 +10,7 @@ import { WorkspaceContext } from '../workspace/interfaces/workspace-context.inte
 import { GitService } from '../git/git.service';
 import { DiscoveryService } from '../discovery/discovery.service';
 import { GraphifyService } from '../graphify/graphify.service';
+import { GraphifyResult } from '../graphify/interfaces/graphify-result.interface';
 import { GraphNormalizerService } from '../graph/graph-normalizer.service';
 import { GraphBuilderService } from '../graph/graph-builder.service';
 import { Neo4jService } from '../neo4j/neo4j.service';
@@ -17,7 +18,6 @@ import {
   fromPrismaJson,
   markStage,
   hasStage,
-  emptyCheckpoint,
   toPrismaJson,
   ensureCheckpointDir,
   removeCheckpointDir,
@@ -161,15 +161,34 @@ export class AnalysisPipeline {
         } catch {
           fileExists = false;
         }
-
         if (fileExists) {
-          this.logger.log(
-            `[${analysisJobId}] Skipping graphify — loading cached ${cachedPath}`,
-          );
-          graphifyOutputPath = cachedPath;
-          const raw = JSON.parse(await fs.readFile(cachedPath, 'utf-8'));
-          graphifyOutput = raw;
-          await this.setStage(analysisJobId, repositoryId, 'graphify', null);
+          const raw = JSON.parse(
+            await fs.readFile(cachedPath, 'utf-8'),
+          ) as GraphifyResult;
+          const hasContent = Array.isArray(raw?.nodes) && raw.nodes.length > 0;
+          if (hasContent) {
+            this.logger.log(
+              `[${analysisJobId}] Skipping graphify — loading cached ${cachedPath}`,
+            );
+            graphifyOutputPath = cachedPath;
+            graphifyOutput = raw;
+            await this.setStage(analysisJobId, repositoryId, 'graphify', null);
+          } else {
+            // Cached artifact is empty (e.g. produced by a failed run) —
+            // re-run graphify instead of replaying an empty graph forever.
+            this.logger.warn(
+              `[${analysisJobId}] Cached graphify output at ${cachedPath} is empty — re-running`,
+            );
+            graphifyOutput = await this.runGraphify(
+              analysisJobId,
+              repositoryId,
+              project,
+              workspace,
+              localPath,
+              checkpointGraphPath,
+            );
+            graphifyOutputPath = checkpointGraphPath;
+          }
         } else {
           graphifyOutput = await this.runGraphify(
             analysisJobId,
@@ -204,6 +223,11 @@ export class AnalysisPipeline {
       // ── Stage: normalize ────────────────────────────────────────────────────
       await this.setStage(analysisJobId, repositoryId, 'normalize', null);
       const normalized = this.normalizer.normalize(graphifyOutput);
+      if (normalized.entities.length === 0) {
+        throw new Error(
+          'Graph normalization produced 0 entities — refusing to persist an empty knowledge graph. Check graphify output and repository content.',
+        );
+      }
       checkpoint = markStage(checkpoint, 'normalize');
       await this.saveCheckpoint(analysisJobId, checkpoint);
 
@@ -293,17 +317,19 @@ export class AnalysisPipeline {
 
     const result = await this.graphifyService.analyze(project, ws);
 
-    // Persist graphify JSON to checkpoint dir so it survives a crash
-    await fs
-      .copyFile(result.outputPath ?? checkpointGraphPath, checkpointGraphPath)
-      .catch(() => {
-        // outputPath may not exist if graphify produced an empty fallback; write empty
-        return fs.writeFile(
-          checkpointGraphPath,
-          JSON.stringify({ nodes: result.nodes, edges: result.edges }),
-          'utf-8',
-        );
-      });
+    if (!result.nodes?.length) {
+      throw new Error(
+        `Graphify produced 0 nodes for repository ${repositoryId} — aborting before an empty graph is cached or persisted`,
+      );
+    }
+
+    // Persist graphify JSON to checkpoint dir so it survives a crash.
+    // Only cache non-empty results: caching an empty graph would poison
+    // every subsequent retry of this job.
+    await fs.copyFile(
+      result.outputPath ?? checkpointGraphPath,
+      checkpointGraphPath,
+    );
 
     return result;
   }

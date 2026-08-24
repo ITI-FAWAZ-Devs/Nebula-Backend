@@ -31,7 +31,7 @@ export class AuthService {
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
     private readonly organizationsService: OrganizationsService,
-  ) { }
+  ) {}
 
   // ── Register ──
 
@@ -58,15 +58,23 @@ export class AuthService {
           user.id,
           dto.organizationName,
         );
-        await this.usersService.update(user.id, { defaultOrganizationId: org.id });
+        await this.usersService.update(user.id, {
+          defaultOrganizationId: org.id,
+        });
       } catch (err) {
-        this.logger.error('Failed to create organization during registration', err);
+        this.logger.error(
+          'Failed to create organization during registration',
+          err,
+        );
       }
     }
 
     // Resolve any pending email-only invitations for this email address
-    this.organizationsService.resolvePendingEmailInvites(user.id, dto.email)
-      .catch((err) => this.logger.error('Failed to resolve pending invites', err));
+    this.organizationsService
+      .resolvePendingEmailInvites(user.id, dto.email)
+      .catch((err) =>
+        this.logger.error('Failed to resolve pending invites', err),
+      );
 
     // Generate email verification token
     const verificationToken = this.tokenService.generateSecureToken();
@@ -413,13 +421,17 @@ export class AuthService {
   // ── Register From Invite ──
 
   async registerFromInvite(dto: RegisterFromInviteDto) {
-    const invite = await this.organizationsService.findEmailInviteByToken(dto.inviteToken);
+    const invite = await this.organizationsService.findEmailInviteByToken(
+      dto.inviteToken,
+    );
 
     if (!invite) {
       throw new BadRequestException('Invalid or expired invite token');
     }
     if (!invite.inviteEmail) {
-      throw new BadRequestException('This invite token is not for email-only registration');
+      throw new BadRequestException(
+        'This invite token is not for email-only registration',
+      );
     }
     if (invite.userId) {
       throw new BadRequestException('This invite has already been accepted');
@@ -427,7 +439,9 @@ export class AuthService {
 
     const existing = await this.usersService.findByEmail(invite.inviteEmail);
     if (existing) {
-      throw new ConflictException('A user with this email already exists. Please log in and accept the invitation instead.');
+      throw new ConflictException(
+        'A user with this email already exists. Please log in and accept the invitation instead.',
+      );
     }
 
     const hashedPassword = await argon2.hash(dto.password);
@@ -442,8 +456,11 @@ export class AuthService {
     await this.organizationsService.activateInviteForUser(invite.id, user.id);
 
     // Resolve any other pending email invites for this address
-    this.organizationsService.resolvePendingEmailInvites(user.id, invite.inviteEmail)
-      .catch((err) => this.logger.error('Failed to resolve pending invites', err));
+    this.organizationsService
+      .resolvePendingEmailInvites(user.id, invite.inviteEmail)
+      .catch((err) =>
+        this.logger.error('Failed to resolve pending invites', err),
+      );
 
     return this.issueTokens(user);
   }

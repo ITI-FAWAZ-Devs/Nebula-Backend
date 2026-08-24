@@ -196,7 +196,12 @@ describe('RepositoriesService', () => {
 
   describe('getImportedById', () => {
     it('should return repository details if found and owner matches', async () => {
-      const mockRepo = { id: 'repo-123', userId: 'user-123', name: 'test', organizationId: null };
+      const mockRepo = {
+        id: 'repo-123',
+        userId: 'user-123',
+        name: 'test',
+        organizationId: null,
+      };
       mockPrisma.repository.findUnique.mockResolvedValue(mockRepo);
 
       const result = await service.getImportedById('user-123', 'repo-123');
@@ -214,7 +219,11 @@ describe('RepositoriesService', () => {
 
   describe('deleteImported', () => {
     it('should delete and return id if repository exists', async () => {
-      const mockRepo = { id: 'repo-123', userId: 'user-123', organizationId: null };
+      const mockRepo = {
+        id: 'repo-123',
+        userId: 'user-123',
+        organizationId: null,
+      };
       mockPrisma.repository.findUnique.mockResolvedValue(mockRepo);
       mockPrisma.repository.delete.mockResolvedValue(mockRepo);
 

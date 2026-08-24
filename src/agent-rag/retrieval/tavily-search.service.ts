@@ -52,7 +52,12 @@ export class TavilySearchService {
       }
 
       const data = (await response.json()) as {
-        results?: Array<{ title?: string; url?: string; content?: string; score?: number }>;
+        results?: Array<{
+          title?: string;
+          url?: string;
+          content?: string;
+          score?: number;
+        }>;
       };
 
       return (data.results ?? []).map((r) => ({

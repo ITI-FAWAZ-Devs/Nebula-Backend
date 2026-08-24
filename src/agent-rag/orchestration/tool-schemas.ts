@@ -49,7 +49,8 @@ export const AGENT_TOOL_DECLARATIONS: FunctionDeclarationsTool[] = [
           properties: {
             nodeId: {
               type: SchemaType.STRING,
-              description: 'Exact graph nodeId, e.g. "repo-id:path/to/file.ts".',
+              description:
+                'Exact graph nodeId, e.g. "repo-id:path/to/file.ts".',
             },
             name: {
               type: SchemaType.STRING,
@@ -137,7 +138,8 @@ export const AGENT_TOOL_DECLARATIONS: FunctionDeclarationsTool[] = [
             },
             k: {
               type: SchemaType.NUMBER,
-              description: 'Number of vector seeds before expansion. Default 8.',
+              description:
+                'Number of vector seeds before expansion. Default 8.',
             },
           },
           required: ['query'],

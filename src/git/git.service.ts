@@ -20,12 +20,19 @@ export interface CloneOptions {
 export class GitService {
   private readonly logger = new Logger(GitService.name);
 
-  constructor(
-    private readonly connectionsService: ConnectionsService,
-  ) {}
+  constructor(private readonly connectionsService: ConnectionsService) {}
 
   async clone(options: CloneOptions): Promise<CloneRepositoryResult> {
-    const { userId, repositoryId, cloneUrl, destPath, branch, orgId, connectionId, isPrivate } = options;
+    const {
+      userId,
+      repositoryId,
+      cloneUrl,
+      destPath,
+      branch,
+      orgId,
+      connectionId,
+      isPrivate,
+    } = options;
 
     // Prefer an explicitly supplied token (e.g. for public repos the caller may pass null)
     const token =

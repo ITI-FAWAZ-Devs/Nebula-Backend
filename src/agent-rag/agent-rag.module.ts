@@ -27,7 +27,13 @@ import { AgentSessionStore } from './session/agent-session.store';
 import { ConversationPersistenceService } from './persistence/conversation-persistence.service';
 
 @Module({
-  imports: [GeminiModule, ChromaModule, Neo4jModule, PrismaModule, AiProviderModule],
+  imports: [
+    GeminiModule,
+    ChromaModule,
+    Neo4jModule,
+    PrismaModule,
+    AiProviderModule,
+  ],
   controllers: [AgentRagController],
   providers: [
     AgentRagService,

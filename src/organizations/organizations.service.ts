@@ -37,19 +37,35 @@ export class OrganizationsService {
       });
 
       const ownerRole = await tx.role.create({
-        data: { orgId: org.id, name: 'Owner', permissions: [...ALL_PERMISSIONS] },
+        data: {
+          orgId: org.id,
+          name: 'Owner',
+          permissions: [...ALL_PERMISSIONS],
+        },
       });
 
       await tx.role.create({
-        data: { orgId: org.id, name: 'Admin', permissions: [...ADMIN_PERMISSIONS] },
+        data: {
+          orgId: org.id,
+          name: 'Admin',
+          permissions: [...ADMIN_PERMISSIONS],
+        },
       });
 
       await tx.role.create({
-        data: { orgId: org.id, name: 'Developer', permissions: [...DEVELOPER_PERMISSIONS] },
+        data: {
+          orgId: org.id,
+          name: 'Developer',
+          permissions: [...DEVELOPER_PERMISSIONS],
+        },
       });
 
       await tx.role.create({
-        data: { orgId: org.id, name: 'Viewer', permissions: [...VIEWER_PERMISSIONS] },
+        data: {
+          orgId: org.id,
+          name: 'Viewer',
+          permissions: [...VIEWER_PERMISSIONS],
+        },
       });
 
       await tx.organizationMember.create({
@@ -121,7 +137,9 @@ export class OrganizationsService {
 
   /** Renames an organization (org:manage_settings). */
   async renameOrganization(orgId: string, userId: string, name: string) {
-    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+    });
     if (!org) throw new NotFoundException('Organization not found');
 
     const updated = await this.prisma.organization.update({
@@ -145,11 +163,15 @@ export class OrganizationsService {
    * Deletes an organization. Only the org owner may do this.
    */
   async deleteOrganization(orgId: string, userId: string) {
-    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+    });
     if (!org) throw new NotFoundException('Organization not found');
 
     if (org.ownerId !== userId) {
-      throw new ForbiddenException('Only the organization owner can delete the organization');
+      throw new ForbiddenException(
+        'Only the organization owner can delete the organization',
+      );
     }
 
     await this.prisma.organization.delete({ where: { id: orgId } });
@@ -167,7 +189,9 @@ export class OrganizationsService {
       where: { orgId_name: { orgId, name } },
     });
     if (existing) {
-      throw new ConflictException(`A role named "${name}" already exists in this organization`);
+      throw new ConflictException(
+        `A role named "${name}" already exists in this organization`,
+      );
     }
 
     return this.prisma.role.create({ data: { orgId, name, permissions } });
@@ -183,7 +207,10 @@ export class OrganizationsService {
   }
 
   /** Updates a custom role. Built-in roles (Owner/Admin/Developer/Viewer) cannot be modified. */
-  async updateRole(roleId: string, data: { name?: string; permissions?: string[] }) {
+  async updateRole(
+    roleId: string,
+    data: { name?: string; permissions?: string[] },
+  ) {
     const role = await this.prisma.role.findUnique({ where: { id: roleId } });
     if (!role) throw new NotFoundException('Role not found');
 
@@ -198,7 +225,10 @@ export class OrganizationsService {
       const duplicate = await this.prisma.role.findUnique({
         where: { orgId_name: { orgId: role.orgId, name: data.name } },
       });
-      if (duplicate) throw new ConflictException(`A role named "${data.name}" already exists`);
+      if (duplicate)
+        throw new ConflictException(
+          `A role named "${data.name}" already exists`,
+        );
     }
 
     return this.prisma.role.update({ where: { id: roleId }, data });
@@ -218,7 +248,9 @@ export class OrganizationsService {
     }
 
     if (role._count.members > 0) {
-      throw new ConflictException('Cannot delete a role that has members assigned. Reassign them first.');
+      throw new ConflictException(
+        'Cannot delete a role that has members assigned. Reassign them first.',
+      );
     }
 
     await this.prisma.role.delete({ where: { id: roleId } });
@@ -231,10 +263,17 @@ export class OrganizationsService {
    *  If the user does not yet have a Nebula account the invite is stored
    *  as email-only (userId = null, inviteEmail = email) and resolved
    *  automatically when they register. */
-  async inviteMember(orgId: string, email: string, roleId: string, invitedByUserId: string) {
+  async inviteMember(
+    orgId: string,
+    email: string,
+    roleId: string,
+    invitedByUserId: string,
+  ) {
     const role = await this.prisma.role.findUnique({ where: { id: roleId } });
     if (!role || role.orgId !== orgId) {
-      throw new BadRequestException('The specified role does not belong to this organization');
+      throw new BadRequestException(
+        'The specified role does not belong to this organization',
+      );
     }
 
     const invitee = await this.prisma.user.findUnique({ where: { email } });
@@ -247,22 +286,39 @@ export class OrganizationsService {
 
       if (existingMember) {
         if (existingMember.status === MemberStatus.ACTIVE) {
-          throw new ConflictException('This user is already an active member of the organization');
+          throw new ConflictException(
+            'This user is already an active member of the organization',
+          );
         }
         return this.prisma.organizationMember.update({
           where: { id: existingMember.id },
-          data: { roleId, inviteToken: crypto.randomUUID(), invitedBy: invitedByUserId },
+          data: {
+            roleId,
+            inviteToken: crypto.randomUUID(),
+            invitedBy: invitedByUserId,
+          },
         });
       }
 
       const inviteToken = crypto.randomUUID();
       const member = await this.prisma.organizationMember.create({
-        data: { orgId, userId: invitee.id, roleId, status: MemberStatus.PENDING, inviteToken, invitedBy: invitedByUserId },
+        data: {
+          orgId,
+          userId: invitee.id,
+          roleId,
+          status: MemberStatus.PENDING,
+          inviteToken,
+          invitedBy: invitedByUserId,
+        },
       });
 
       await this.writeAuditLog(this.prisma, {
-        actorId: invitedByUserId, orgId, action: 'MEMBER_INVITED',
-        resourceType: 'user', resourceId: invitee.id, metadata: { email, roleId },
+        actorId: invitedByUserId,
+        orgId,
+        action: 'MEMBER_INVITED',
+        resourceType: 'user',
+        resourceId: invitee.id,
+        metadata: { email, roleId },
       });
 
       this.logger.log(`Existing user ${email} invited to org ${orgId}`);
@@ -276,11 +332,17 @@ export class OrganizationsService {
 
     if (existing) {
       if (existing.status === MemberStatus.ACTIVE) {
-        throw new ConflictException('An invitation for this email already exists and has been accepted');
+        throw new ConflictException(
+          'An invitation for this email already exists and has been accepted',
+        );
       }
       return this.prisma.organizationMember.update({
         where: { id: existing.id },
-        data: { roleId, inviteToken: crypto.randomUUID(), invitedBy: invitedByUserId },
+        data: {
+          roleId,
+          inviteToken: crypto.randomUUID(),
+          invitedBy: invitedByUserId,
+        },
       });
     }
 
@@ -298,12 +360,21 @@ export class OrganizationsService {
     });
 
     await this.writeAuditLog(this.prisma, {
-      actorId: invitedByUserId, orgId, action: 'MEMBER_INVITED',
-      resourceType: 'user', resourceId: 'pending:' + email, metadata: { email, roleId, pending: true },
+      actorId: invitedByUserId,
+      orgId,
+      action: 'MEMBER_INVITED',
+      resourceType: 'user',
+      resourceId: 'pending:' + email,
+      metadata: { email, roleId, pending: true },
     });
 
     this.logger.log(`Email-only invite created for ${email} in org ${orgId}`);
-    return { ...member, pending: true, message: 'Invitation created. The user will be added when they register with this email.' };
+    return {
+      ...member,
+      pending: true,
+      message:
+        'Invitation created. The user will be added when they register with this email.',
+    };
   }
 
   /** Accepts an invite. */
@@ -312,14 +383,19 @@ export class OrganizationsService {
       where: { inviteToken },
     });
     if (!member) throw new NotFoundException('Invalid or expired invite token');
-    if (member.userId !== userId) throw new ForbiddenException('This invitation is not for you');
+    if (member.userId !== userId)
+      throw new ForbiddenException('This invitation is not for you');
     if (member.status === MemberStatus.ACTIVE) {
       throw new ConflictException('You have already accepted this invitation');
     }
 
     const updated = await this.prisma.organizationMember.update({
       where: { id: member.id },
-      data: { status: MemberStatus.ACTIVE, joinedAt: new Date(), inviteToken: null },
+      data: {
+        status: MemberStatus.ACTIVE,
+        joinedAt: new Date(),
+        inviteToken: null,
+      },
     });
 
     await this.writeAuditLog(this.prisma, {
@@ -339,7 +415,9 @@ export class OrganizationsService {
     return this.prisma.organizationMember.findMany({
       where: { orgId },
       include: {
-        user: { select: { id: true, email: true, fullName: true, avatar: true } },
+        user: {
+          select: { id: true, email: true, fullName: true, avatar: true },
+        },
         role: { select: { id: true, name: true, permissions: true } },
       },
       orderBy: { createdAt: 'asc' },
@@ -348,32 +426,47 @@ export class OrganizationsService {
 
   /** Changes a member's role. */
   async changeMemberRole(memberId: string, roleId: string, orgId: string) {
-    const member = await this.prisma.organizationMember.findUnique({ where: { id: memberId } });
+    const member = await this.prisma.organizationMember.findUnique({
+      where: { id: memberId },
+    });
     if (!member || member.orgId !== orgId) {
       throw new NotFoundException('Member not found in this organization');
     }
 
-    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+    });
     if (org && member.userId === org.ownerId) {
-      throw new ForbiddenException("Cannot change the organization owner's role");
+      throw new ForbiddenException(
+        "Cannot change the organization owner's role",
+      );
     }
 
     const role = await this.prisma.role.findUnique({ where: { id: roleId } });
     if (!role || role.orgId !== orgId) {
-      throw new BadRequestException('The specified role does not belong to this organization');
+      throw new BadRequestException(
+        'The specified role does not belong to this organization',
+      );
     }
 
-    return this.prisma.organizationMember.update({ where: { id: memberId }, data: { roleId } });
+    return this.prisma.organizationMember.update({
+      where: { id: memberId },
+      data: { roleId },
+    });
   }
 
   /** Removes a member from the organization. Cannot remove the owner. */
   async removeMember(memberId: string, orgId: string) {
-    const member = await this.prisma.organizationMember.findUnique({ where: { id: memberId } });
+    const member = await this.prisma.organizationMember.findUnique({
+      where: { id: memberId },
+    });
     if (!member || member.orgId !== orgId) {
       throw new NotFoundException('Member not found in this organization');
     }
 
-    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+    });
     if (org && member.userId === org.ownerId) {
       throw new ForbiddenException('Cannot remove the organization owner');
     }
@@ -389,7 +482,8 @@ export class OrganizationsService {
     const existing = await this.prisma.team.findUnique({
       where: { orgId_name: { orgId, name } },
     });
-    if (existing) throw new ConflictException(`A team named "${name}" already exists`);
+    if (existing)
+      throw new ConflictException(`A team named "${name}" already exists`);
 
     const team = await this.prisma.team.create({ data: { orgId, name } });
 
@@ -413,7 +507,9 @@ export class OrganizationsService {
         _count: { select: { members: true, repositories: true } },
         members: {
           include: {
-            user: { select: { id: true, email: true, fullName: true, avatar: true } },
+            user: {
+              select: { id: true, email: true, fullName: true, avatar: true },
+            },
           },
         },
         repositories: {
@@ -429,30 +525,43 @@ export class OrganizationsService {
   /** Adds a user to a team. */
   async addTeamMember(teamId: string, userId: string, orgId: string) {
     const team = await this.prisma.team.findUnique({ where: { id: teamId } });
-    if (!team || team.orgId !== orgId) throw new NotFoundException('Team not found in this organization');
+    if (!team || team.orgId !== orgId)
+      throw new NotFoundException('Team not found in this organization');
 
     const isMember = await this.isMember(userId, orgId);
-    if (!isMember) throw new BadRequestException('User is not a member of the organization');
+    if (!isMember)
+      throw new BadRequestException('User is not a member of the organization');
 
-    return this.prisma.teamMember.create({ data: { teamId, userId } }).catch(() => {
-      throw new ConflictException('User is already in this team');
-    });
+    return this.prisma.teamMember
+      .create({ data: { teamId, userId } })
+      .catch(() => {
+        throw new ConflictException('User is already in this team');
+      });
   }
 
   /** Removes a user from a team. */
   async removeTeamMember(teamId: string, userId: string, orgId: string) {
     const team = await this.prisma.team.findUnique({ where: { id: teamId } });
-    if (!team || team.orgId !== orgId) throw new NotFoundException('Team not found');
+    if (!team || team.orgId !== orgId)
+      throw new NotFoundException('Team not found');
 
-    await this.prisma.teamMember.delete({ where: { teamId_userId: { teamId, userId } } });
+    await this.prisma.teamMember.delete({
+      where: { teamId_userId: { teamId, userId } },
+    });
     return { teamId, userId };
   }
 
   /** Attaches a repo to a team with specific permissions. */
-  async addTeamRepository(teamId: string, repositoryId: string, permissions: string[], orgId: string) {
+  async addTeamRepository(
+    teamId: string,
+    repositoryId: string,
+    permissions: string[],
+    orgId: string,
+  ) {
     this.validatePermissions(permissions);
     const team = await this.prisma.team.findUnique({ where: { id: teamId } });
-    if (!team || team.orgId !== orgId) throw new NotFoundException('Team not found');
+    if (!team || team.orgId !== orgId)
+      throw new NotFoundException('Team not found');
 
     return this.prisma.teamRepository.upsert({
       where: { teamId_repositoryId: { teamId, repositoryId } },
@@ -462,9 +571,14 @@ export class OrganizationsService {
   }
 
   /** Removes a repo from a team. */
-  async removeTeamRepository(teamId: string, repositoryId: string, orgId: string) {
+  async removeTeamRepository(
+    teamId: string,
+    repositoryId: string,
+    orgId: string,
+  ) {
     const team = await this.prisma.team.findUnique({ where: { id: teamId } });
-    if (!team || team.orgId !== orgId) throw new NotFoundException('Team not found');
+    if (!team || team.orgId !== orgId)
+      throw new NotFoundException('Team not found');
 
     await this.prisma.teamRepository.delete({
       where: { teamId_repositoryId: { teamId, repositoryId } },
@@ -475,7 +589,8 @@ export class OrganizationsService {
   /** Deletes a team. */
   async deleteTeam(teamId: string, orgId: string) {
     const team = await this.prisma.team.findUnique({ where: { id: teamId } });
-    if (!team || team.orgId !== orgId) throw new NotFoundException('Team not found');
+    if (!team || team.orgId !== orgId)
+      throw new NotFoundException('Team not found');
 
     await this.prisma.team.delete({ where: { id: teamId } });
     return { id: teamId };
@@ -484,11 +599,19 @@ export class OrganizationsService {
   // ── Repository Member Access ──
 
   /** Sets direct per-repo permissions for a user. */
-  async setRepositoryMember(repositoryId: string, userId: string, permissions: string[], orgId: string) {
+  async setRepositoryMember(
+    repositoryId: string,
+    userId: string,
+    permissions: string[],
+    orgId: string,
+  ) {
     this.validatePermissions(permissions);
 
-    const repo = await this.prisma.repository.findUnique({ where: { id: repositoryId } });
-    if (!repo || repo.organizationId !== orgId) throw new NotFoundException('Repository not found in this organization');
+    const repo = await this.prisma.repository.findUnique({
+      where: { id: repositoryId },
+    });
+    if (!repo || repo.organizationId !== orgId)
+      throw new NotFoundException('Repository not found in this organization');
 
     return this.prisma.repositoryMember.upsert({
       where: { repositoryId_userId: { repositoryId, userId } },
@@ -499,21 +622,33 @@ export class OrganizationsService {
 
   /** Lists per-repo member access for a repository. */
   async listRepositoryMembers(repositoryId: string, orgId: string) {
-    const repo = await this.prisma.repository.findUnique({ where: { id: repositoryId } });
-    if (!repo || repo.organizationId !== orgId) throw new NotFoundException('Repository not found');
+    const repo = await this.prisma.repository.findUnique({
+      where: { id: repositoryId },
+    });
+    if (!repo || repo.organizationId !== orgId)
+      throw new NotFoundException('Repository not found');
 
     return this.prisma.repositoryMember.findMany({
       where: { repositoryId },
       include: {
-        user: { select: { id: true, email: true, fullName: true, avatar: true } },
+        user: {
+          select: { id: true, email: true, fullName: true, avatar: true },
+        },
       },
     });
   }
 
   /** Removes per-repo access for a user. */
-  async removeRepositoryMember(repositoryId: string, userId: string, orgId: string) {
-    const repo = await this.prisma.repository.findUnique({ where: { id: repositoryId } });
-    if (!repo || repo.organizationId !== orgId) throw new NotFoundException('Repository not found');
+  async removeRepositoryMember(
+    repositoryId: string,
+    userId: string,
+    orgId: string,
+  ) {
+    const repo = await this.prisma.repository.findUnique({
+      where: { id: repositoryId },
+    });
+    if (!repo || repo.organizationId !== orgId)
+      throw new NotFoundException('Repository not found');
 
     await this.prisma.repositoryMember.delete({
       where: { repositoryId_userId: { repositoryId, userId } },
@@ -528,7 +663,9 @@ export class OrganizationsService {
     return this.prisma.auditLog.findMany({
       where: { orgId },
       include: {
-        actor: { select: { id: true, email: true, fullName: true, avatar: true } },
+        actor: {
+          select: { id: true, email: true, fullName: true, avatar: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -543,8 +680,13 @@ export class OrganizationsService {
    * Returns ALL_PERMISSIONS for the org owner.
    * Returns null if the user is not an active member.
    */
-  async getMemberPermissions(userId: string, orgId: string): Promise<string[] | null> {
-    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+  async getMemberPermissions(
+    userId: string,
+    orgId: string,
+  ): Promise<string[] | null> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+    });
     if (!org) return null;
     if (org.ownerId === userId) return [...ALL_PERMISSIONS];
 
@@ -559,7 +701,9 @@ export class OrganizationsService {
 
   /** Checks if a user is an ACTIVE member (or owner) of an org. */
   async isMember(userId: string, orgId: string): Promise<boolean> {
-    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+    });
     if (!org) return false;
     if (org.ownerId === userId) return true;
 
@@ -584,11 +728,20 @@ export class OrganizationsService {
   async activateInviteForUser(inviteId: string, userId: string): Promise<void> {
     await this.prisma.organizationMember.update({
       where: { id: inviteId },
-      data: { userId, status: MemberStatus.ACTIVE, joinedAt: new Date(), inviteToken: null, inviteEmail: null },
+      data: {
+        userId,
+        status: MemberStatus.ACTIVE,
+        joinedAt: new Date(),
+        inviteToken: null,
+        inviteEmail: null,
+      },
     });
   }
 
-  async resolvePendingEmailInvites(userId: string, email: string): Promise<void> {
+  async resolvePendingEmailInvites(
+    userId: string,
+    email: string,
+  ): Promise<void> {
     const pendingInvites = await this.prisma.organizationMember.findMany({
       where: { inviteEmail: email, userId: null },
     });
@@ -598,7 +751,9 @@ export class OrganizationsService {
         where: { id: invite.id },
         data: { userId, inviteEmail: null },
       });
-      this.logger.log(`Resolved pending invite for ${email} in org ${invite.orgId}`);
+      this.logger.log(
+        `Resolved pending invite for ${email} in org ${invite.orgId}`,
+      );
     }
   }
 

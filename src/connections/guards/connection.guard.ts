@@ -29,10 +29,7 @@ export class ConnectionGuard implements CanActivate {
     if (!userId) return false;
 
     const defaultConnection =
-      await this.connectionsService.findDefaultUserConnection(
-        userId,
-        provider,
-      );
+      await this.connectionsService.findDefaultUserConnection(userId, provider);
 
     if (!defaultConnection) {
       throw new HttpException(

@@ -26,7 +26,9 @@ export class VoiceModelCheckService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     const enabled = this.config.get<boolean>('voice.enabled');
     if (!enabled) {
-      this.logger.log('Voice is disabled (VOICE_ENABLED=false). Skipping model check.');
+      this.logger.log(
+        'Voice is disabled (VOICE_ENABLED=false). Skipping model check.',
+      );
       return;
     }
 
@@ -41,8 +43,8 @@ export class VoiceModelCheckService implements OnModuleInit {
     if (!checkExecutable(whisperBin)) {
       issues.push(
         `whisper.cpp binary not found or not executable: "${whisperBin}"\n` +
-        `  Set VOICE_WHISPER_BIN to the full path of the built 'main' or 'whisper-cpp' binary.\n` +
-        `  See docs/voice-setup.md § 1.`,
+          `  Set VOICE_WHISPER_BIN to the full path of the built 'main' or 'whisper-cpp' binary.\n` +
+          `  See docs/voice-setup.md § 1.`,
       );
     } else {
       this.logger.log(`whisper.cpp binary OK: ${whisperBin}`);
@@ -52,9 +54,9 @@ export class VoiceModelCheckService implements OnModuleInit {
     if (!checkFileExists(whisperModel)) {
       issues.push(
         `whisper.cpp model not found: "${whisperModel}"\n` +
-        `  Download via: bash models/download-ggml-model.sh base.en\n` +
-        `  Then set VOICE_WHISPER_MODEL to its absolute path.\n` +
-        `  See docs/voice-setup.md § 1.`,
+          `  Download via: bash models/download-ggml-model.sh base.en\n` +
+          `  Then set VOICE_WHISPER_MODEL to its absolute path.\n` +
+          `  See docs/voice-setup.md § 1.`,
       );
     } else {
       this.logger.log(`whisper.cpp model OK: ${path.basename(whisperModel)}`);
@@ -64,9 +66,9 @@ export class VoiceModelCheckService implements OnModuleInit {
     if (!checkExecutable(piperBin)) {
       issues.push(
         `Piper binary not found or not executable: "${piperBin}"\n` +
-        `  Download from https://github.com/rhasspy/piper/releases\n` +
-        `  Then set VOICE_PIPER_BIN to its absolute path.\n` +
-        `  See docs/voice-setup.md § 2.`,
+          `  Download from https://github.com/rhasspy/piper/releases\n` +
+          `  Then set VOICE_PIPER_BIN to its absolute path.\n` +
+          `  See docs/voice-setup.md § 2.`,
       );
     } else {
       this.logger.log(`Piper binary OK: ${piperBin}`);
@@ -76,9 +78,9 @@ export class VoiceModelCheckService implements OnModuleInit {
     if (!checkFileExists(piperModel)) {
       issues.push(
         `Piper model not found: "${piperModel}"\n` +
-        `  Download an ONNX voice from https://huggingface.co/rhasspy/piper-voices\n` +
-        `  Then set VOICE_PIPER_MODEL to its absolute path.\n` +
-        `  See docs/voice-setup.md § 2.`,
+          `  Download an ONNX voice from https://huggingface.co/rhasspy/piper-voices\n` +
+          `  Then set VOICE_PIPER_MODEL to its absolute path.\n` +
+          `  See docs/voice-setup.md § 2.`,
       );
     } else {
       this.logger.log(`Piper model OK: ${path.basename(piperModel)}`);
@@ -89,19 +91,19 @@ export class VoiceModelCheckService implements OnModuleInit {
     if (checkFileExists(piperModel) && !checkFileExists(piperModelJson)) {
       issues.push(
         `Piper model config not found: "${piperModelJson}"\n` +
-        `  Download the matching .onnx.json alongside the .onnx file.\n` +
-        `  See docs/voice-setup.md § 2.`,
+          `  Download the matching .onnx.json alongside the .onnx file.\n` +
+          `  See docs/voice-setup.md § 2.`,
       );
     }
 
     if (issues.length > 0) {
       this.logger.error(
         '╔═══════════════════════════════════════════════════╗\n' +
-        '║  VOICE AGENT: missing binaries or model files     ║\n' +
-        '╚═══════════════════════════════════════════════════╝\n\n' +
-        issues.join('\n\n') +
-        '\n\nVoice sessions will fail until these issues are resolved.' +
-        '\nFull setup guide: docs/voice-setup.md',
+          '║  VOICE AGENT: missing binaries or model files     ║\n' +
+          '╚═══════════════════════════════════════════════════╝\n\n' +
+          issues.join('\n\n') +
+          '\n\nVoice sessions will fail until these issues are resolved.' +
+          '\nFull setup guide: docs/voice-setup.md',
       );
     } else {
       this.logger.log('Voice model check passed — whisper.cpp + Piper ready.');
@@ -111,7 +113,9 @@ export class VoiceModelCheckService implements OnModuleInit {
     if (checkExecutable(whisperBin)) {
       try {
         await new Promise<void>((resolve, reject) => {
-          const proc = spawnCrossPlatform(whisperBin, ['-h'], { stdio: 'ignore' });
+          const proc = spawnCrossPlatform(whisperBin, ['-h'], {
+            stdio: 'ignore',
+          });
           const timer = setTimeout(() => {
             proc.kill();
             resolve();
@@ -126,9 +130,10 @@ export class VoiceModelCheckService implements OnModuleInit {
           });
         });
       } catch (err: unknown) {
-        this.logger.warn(`whisper.cpp smoke-test warning: ${(err as Error).message}`);
+        this.logger.warn(
+          `whisper.cpp smoke-test warning: ${(err as Error).message}`,
+        );
       }
     }
   }
 }
-

@@ -69,7 +69,10 @@ describe('AgentLoopService', () => {
       }),
     };
     followupMock = { generate: jest.fn().mockResolvedValue(['Next?']) };
-    answerCacheMock = { get: jest.fn().mockResolvedValue(null), set: jest.fn() };
+    answerCacheMock = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn(),
+    };
     fastAnswerMock = { findFastAnswer: jest.fn().mockResolvedValue(null) };
     snippetsMock = {
       enrich: jest.fn().mockImplementation(async (_id, citations) => citations),

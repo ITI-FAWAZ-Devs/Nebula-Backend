@@ -45,7 +45,7 @@ describe('TavilySearchService', () => {
           },
         ],
       }),
-    }) as unknown as typeof fetch;
+    });
 
     const results = await service.search('multi-process model', 3);
 
@@ -74,7 +74,7 @@ describe('TavilySearchService', () => {
       ok: false,
       status: 401,
       statusText: 'Unauthorized',
-    }) as unknown as typeof fetch;
+    });
 
     await expect(service.search('query')).resolves.toEqual([]);
   });

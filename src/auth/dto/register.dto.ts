@@ -31,7 +31,9 @@ export class RegisterDto {
   accountType?: AccountType;
 
   @IsString()
-  @IsNotEmpty({ message: 'Organization name is required when accountType is "organization"' })
+  @IsNotEmpty({
+    message: 'Organization name is required when accountType is "organization"',
+  })
   @ValidateIf((o) => o.accountType === 'organization')
   organizationName?: string;
 }

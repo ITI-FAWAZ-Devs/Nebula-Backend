@@ -21,6 +21,15 @@ export interface IProviderAdapter {
   readonly provider: ConnectionProvider;
   validateToken(rawToken: string): Promise<ValidatedTokenResult>;
   fetchUserRepositories(rawToken: string): Promise<RemoteRepository[]>;
-  fetchRepoMetadata(owner: string, repo: string, rawToken?: string): Promise<RemoteRepository>;
-  getLatestCommitSha(rawToken: string, owner: string, repo: string, branch: string): Promise<string>;
+  fetchRepoMetadata(
+    owner: string,
+    repo: string,
+    rawToken?: string,
+  ): Promise<RemoteRepository>;
+  getLatestCommitSha(
+    rawToken: string,
+    owner: string,
+    repo: string,
+    branch: string,
+  ): Promise<string>;
 }

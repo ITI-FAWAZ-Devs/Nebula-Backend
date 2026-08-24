@@ -27,7 +27,12 @@ export class AuthorizationService {
    *  3. Team → repository grants
    *  4. Direct RepositoryMember overrides
    */
-  async can({ userId, action, organizationId, repositoryId }: CanOptions): Promise<boolean> {
+  async can({
+    userId,
+    action,
+    organizationId,
+    repositoryId,
+  }: CanOptions): Promise<boolean> {
     if (!organizationId) {
       // Personal workspace — user owns their own repos
       return true;

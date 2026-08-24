@@ -168,7 +168,11 @@ export function buildAnswerQuestionPrompt(
   question: string,
   context: string,
 ): string {
-  const safeContext = truncate(context, MAX_CONTEXT_CHARS, 'retrieved documentation');
+  const safeContext = truncate(
+    context,
+    MAX_CONTEXT_CHARS,
+    'retrieved documentation',
+  );
 
   return `
 You are an expert software engineer answering questions about a codebase.

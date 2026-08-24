@@ -24,10 +24,16 @@ export class FollowupGeneratorService {
       ].join('\n');
 
       const raw = await this.gemini.generateContent(prompt);
-      const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const cleaned = raw
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
       const parsed = JSON.parse(cleaned);
 
-      if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+      if (
+        Array.isArray(parsed) &&
+        parsed.every((item) => typeof item === 'string')
+      ) {
         return parsed.slice(0, 3);
       }
       return [];

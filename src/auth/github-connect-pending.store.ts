@@ -24,7 +24,10 @@ type StoreEntry = { data: GithubConnectPendingPayload; expiresAt: number };
 @Injectable()
 export class GithubConnectPendingStore {
   private readonly logger = new Logger(GithubConnectPendingStore.name);
-  private readonly filePath = join(tmpdir(), 'nebula-github-connect-pending.json');
+  private readonly filePath = join(
+    tmpdir(),
+    'nebula-github-connect-pending.json',
+  );
   private readonly ttlMs = 10 * 60 * 1000;
   private store = new Map<string, StoreEntry>();
 
@@ -76,7 +79,9 @@ export class GithubConnectPendingStore {
       this.store = new Map(Object.entries(parsed ?? {}));
       this.prune();
     } catch (err) {
-      this.logger.warn(`Could not read pending GitHub connect sessions: ${err}`);
+      this.logger.warn(
+        `Could not read pending GitHub connect sessions: ${err}`,
+      );
     }
   }
 
@@ -89,7 +94,9 @@ export class GithubConnectPendingStore {
         'utf8',
       );
     } catch (err) {
-      this.logger.warn(`Could not persist pending GitHub connect sessions: ${err}`);
+      this.logger.warn(
+        `Could not persist pending GitHub connect sessions: ${err}`,
+      );
     }
   }
 }

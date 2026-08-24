@@ -49,9 +49,7 @@ export class CitationSnippetService {
     if (enriched.length === 0) return fromSynthesizer;
     if (fromSynthesizer.length === 0) return enriched;
 
-    const byKey = new Map(
-      enriched.map((c) => [this.key(c), c] as const),
-    );
+    const byKey = new Map(enriched.map((c) => [this.key(c), c] as const));
     return fromSynthesizer.map((c) => {
       const prev = byKey.get(this.key(c));
       return prev?.snippet ? { ...c, snippet: prev.snippet } : c;
@@ -86,7 +84,10 @@ export class CitationSnippetService {
     const rootWithSep = resolvedRoot.endsWith(path.sep)
       ? resolvedRoot
       : resolvedRoot + path.sep;
-    if (resolvedFile !== resolvedRoot && !resolvedFile.startsWith(rootWithSep)) {
+    if (
+      resolvedFile !== resolvedRoot &&
+      !resolvedFile.startsWith(rootWithSep)
+    ) {
       this.logger.warn(`Rejected path traversal for snippet: ${filePath}`);
       return null;
     }
@@ -111,11 +112,17 @@ export class CitationSnippetService {
     lineCount: number,
   ): { start: number; end: number } {
     if (!lineRange) {
-      return { start: 1, end: Math.min(lineCount, CITATION_SNIPPET_DEFAULT_LINES) };
+      return {
+        start: 1,
+        end: Math.min(lineCount, CITATION_SNIPPET_DEFAULT_LINES),
+      };
     }
     const match = lineRange.match(/(\d+)\s*-?\s*(\d+)?/);
     if (!match) {
-      return { start: 1, end: Math.min(lineCount, CITATION_SNIPPET_DEFAULT_LINES) };
+      return {
+        start: 1,
+        end: Math.min(lineCount, CITATION_SNIPPET_DEFAULT_LINES),
+      };
     }
     const start = Number(match[1]);
     const end = match[2] ? Number(match[2]) : start;

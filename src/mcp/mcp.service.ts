@@ -48,7 +48,8 @@ export class McpService {
             },
             sectionKey: {
               type: 'string',
-              description: 'The section key (e.g. system_architecture, data_flow).',
+              description:
+                'The section key (e.g. system_architecture, data_flow).',
             },
           },
           required: ['repositoryId', 'sectionKey'],
@@ -77,7 +78,9 @@ export class McpService {
   }
 
   async executeTool(name: string, args: Record<string, any>): Promise<unknown> {
-    this.logger.log(`Executing MCP tool "${name}" with args: ${JSON.stringify(args)}`);
+    this.logger.log(
+      `Executing MCP tool "${name}" with args: ${JSON.stringify(args)}`,
+    );
 
     switch (name) {
       case 'read_wiki_structure':
@@ -112,7 +115,8 @@ export class McpService {
     if (!doc) {
       return {
         repositoryId,
-        message: 'No completed architecture wiki documentation found for this repository.',
+        message:
+          'No completed architecture wiki documentation found for this repository.',
         sections: [],
       };
     }

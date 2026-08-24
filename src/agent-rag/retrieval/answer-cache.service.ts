@@ -31,9 +31,7 @@ export class AnswerCacheService {
       if (!raw) return null;
       return JSON.parse(raw) as AgentLoopResult;
     } catch (error) {
-      this.logger.warn(
-        `Answer cache get failed: ${(error as Error).message}`,
-      );
+      this.logger.warn(`Answer cache get failed: ${(error as Error).message}`);
       return null;
     }
   }
@@ -50,9 +48,7 @@ export class AnswerCacheService {
         ANSWER_CACHE_TTL_SECONDS,
       );
     } catch (error) {
-      this.logger.warn(
-        `Answer cache set failed: ${(error as Error).message}`,
-      );
+      this.logger.warn(`Answer cache set failed: ${(error as Error).message}`);
     }
   }
 }

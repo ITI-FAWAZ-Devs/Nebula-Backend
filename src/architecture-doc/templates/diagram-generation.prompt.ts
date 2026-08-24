@@ -12,12 +12,17 @@ function escapeMermaidLabel(label: string): string {
   return label.replace(/"/g, '#quot;').replace(/\n/g, ' ').trim();
 }
 
-function truncateWithCount<T>(items: T[], max: number): { items: T[]; omitted: number } {
+function truncateWithCount<T>(
+  items: T[],
+  max: number,
+): { items: T[]; omitted: number } {
   if (items.length <= max) return { items, omitted: 0 };
   return { items: items.slice(0, max), omitted: items.length - max };
 }
 
-function dedupeRelationships(relationships: FileRelationship[]): FileRelationship[] {
+function dedupeRelationships(
+  relationships: FileRelationship[],
+): FileRelationship[] {
   const seen = new Set<string>();
   const result: FileRelationship[] = [];
   for (const r of relationships) {
@@ -39,8 +44,10 @@ export function buildDiagramGenerationPrompt(
   const dedupedRelationships = dedupeRelationships(relationships ?? []);
   const { items: cappedRelationships, omitted: omittedRelationships } =
     truncateWithCount(dedupedRelationships, MAX_RELATIONSHIPS);
-  const { items: cappedClusters, omitted: omittedClusters } =
-    truncateWithCount(clusters ?? [], MAX_CLUSTERS);
+  const { items: cappedClusters, omitted: omittedClusters } = truncateWithCount(
+    clusters ?? [],
+    MAX_CLUSTERS,
+  );
 
   const relationshipList =
     cappedRelationships

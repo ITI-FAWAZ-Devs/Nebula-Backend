@@ -19,7 +19,9 @@ export function buildJsonCorrectionPrompt(
   shapeDescription: string,
   invalidOutput: string,
 ): string {
-  const safeInvalidOutput = truncateInvalidOutput(invalidOutput || '(empty response)');
+  const safeInvalidOutput = truncateInvalidOutput(
+    invalidOutput || '(empty response)',
+  );
 
   return `Your previous response was not valid JSON and could not be parsed. Fix it and re-emit it.
 

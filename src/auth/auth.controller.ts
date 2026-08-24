@@ -332,7 +332,9 @@ export class AuthController {
     ).toString('base64');
 
     const params = new URLSearchParams({ state });
-    return (res as any).redirect(`/api/auth/github/connect?${params.toString()}`);
+    return (res as any).redirect(
+      `/api/auth/github/connect?${params.toString()}`,
+    );
   }
 
   /**
@@ -350,10 +352,7 @@ export class AuthController {
   @SkipResponseIntercept()
   @UseGuards(GithubAuthGuard)
   @Get('github/callback')
-  async githubCallback(
-    @Req() req: Request,
-    @Res() res: Response,
-  ) {
+  async githubCallback(@Req() req: Request, @Res() res: Response) {
     const profile = (req as any).user as {
       id: string;
       username: string;
@@ -364,7 +363,12 @@ export class AuthController {
       state: Record<string, any>;
     };
 
-    const { state: profileState, accessToken, username, id: githubId } = profile;
+    const {
+      state: profileState,
+      accessToken,
+      username,
+      id: githubId,
+    } = profile;
     const state = this.resolveConnectState(req, profileState);
 
     if (state?.purpose === 'connect') {
@@ -374,9 +378,9 @@ export class AuthController {
       const [{ user: ghUser, orgs }, existingConns] = await Promise.all([
         this.connectionsService.listGithubOrgsForToken(accessToken),
         state.userId
-          ? (state.workspace === 'organization' && state.organizationId
-              ? this.connectionsService.listOrgConnections(state.organizationId)
-              : this.connectionsService.listUserConnections(state.userId))
+          ? state.workspace === 'organization' && state.organizationId
+            ? this.connectionsService.listOrgConnections(state.organizationId)
+            : this.connectionsService.listUserConnections(state.userId)
           : Promise.resolve([]),
       ]);
 
@@ -421,7 +425,9 @@ export class AuthController {
   async getGithubConnectPending(@Query('sid') sid: string) {
     const payload = sid ? this.pendingStore.get(sid) : null;
     if (!payload) {
-      throw new NotFoundException('GitHub connect session expired. Please try again.');
+      throw new NotFoundException(
+        'GitHub connect session expired. Please try again.',
+      );
     }
     return {
       success: true,
@@ -440,10 +446,15 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   async githubConnectSelect(
     @CurrentUser('id') jwtUserId: string | undefined,
-    @Body() body: {
+    @Body()
+    body: {
       accessToken: string;
       userId?: string;
-      selections: Array<{ login: string; id: string; type: 'USER' | 'ORGANIZATION' }>;
+      selections: Array<{
+        login: string;
+        id: string;
+        type: 'USER' | 'ORGANIZATION';
+      }>;
       workspace: 'personal' | 'organization';
       organizationId?: string | null;
       sid?: string;
@@ -486,7 +497,8 @@ export class AuthController {
    */
   @Get('github/orgs')
   async listGithubOrgs(@CurrentUser('id') userId: string) {
-    const connections = await this.connectionsService.listUserConnections(userId);
+    const connections =
+      await this.connectionsService.listUserConnections(userId);
     const githubConns = connections.filter((c) => c.provider === 'GITHUB');
 
     return {
@@ -532,8 +544,7 @@ export class AuthController {
     }
 
     const raw = (req as any).cookies?.nebula_github_connect_state as
-      | string
-      | undefined;
+      string | undefined;
     if (!raw) return profileState ?? {};
 
     try {
@@ -548,7 +559,11 @@ export class AuthController {
   /** Only allow in-app relative paths so connect never bounces to an external URL. */
   private safeReturnTo(path: unknown): string {
     if (typeof path !== 'string') return '/launch';
-    if (!path.startsWith('/') || path.startsWith('//') || path.includes('://')) {
+    if (
+      !path.startsWith('/') ||
+      path.startsWith('//') ||
+      path.includes('://')
+    ) {
       return '/launch';
     }
     return path;
