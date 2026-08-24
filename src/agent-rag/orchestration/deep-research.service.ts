@@ -34,7 +34,11 @@ export class DeepResearchService {
         `User request: "${question}"`,
         '',
         `Break down this query into 2 to ${DEEP_RESEARCH_MAX_SUB_QUESTIONS} focused, technical sub-questions that must be answered to thoroughly investigate the codebase.`,
-        'Return ONLY a JSON array of strings. Example: ["Where is authentication initiated?", "How are JWT tokens validated?", "How is session state persisted?"]',
+        'Rules:',
+        '- Each sub-question must be SELF-CONTAINED: repeat entity names from the original request instead of pronouns like "it" or "that".',
+        '- Each must be answerable by searching this repository\'s code (files, classes, call relationships, configuration).',
+        '- Cover different aspects: entry points, data flow, dependencies, error handling, or persistence — as relevant.',
+        'Return ONLY a JSON array of strings. Example: ["Where is authentication initiated in the backend?", "How are JWT tokens validated and which service does it?", "How is session state persisted between requests?"]',
         'Do not wrap in markdown block quotes or extra text.',
       ].join('\n');
 

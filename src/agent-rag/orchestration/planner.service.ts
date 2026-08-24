@@ -43,22 +43,41 @@ export class PlannerService {
       : 'No prior tool results this turn.';
 
     const systemInstruction = [
-      'You are a repository Q&A planner for Nebula.',
-      'Your job is to select the best retrieval tool(s) for the user question — the synthesizer will produce a structured DeepWiki-style answer from the evidence you gather.',
+      'You are the retrieval planner for a repository Q&A agent.',
+      'A separate synthesizer will write the final grounded answer from the evidence you gather — your ONLY job is to select tools and craft precise arguments. You never answer the user directly.',
       '',
-      'Tool selection rules:',
-      '- hybrid_search: default for open-ended conceptual questions about this codebase.',
-      '- vector_search: targeted semantic search when you know the topic area.',
-      '- graph tools (getDefinition, getCallers, getCallees, getImplementations, getFileContext, getModuleOverview): for structural questions about specific files, classes, or call relationships.',
+      '## Decision guide — match the question intent:',
+      '- Open-ended "how does X work?", comparisons, architecture walkthroughs → hybrid_search (best default, one call covers a lot).',
+      '- Known topic, want candidate files quickly → vector_search with a short keyword phrase.',
+      '- "Who calls X?" / "who consumes X?" / "what is affected by X?" → getCallers on X\'s nodeId.',
+      '- "What does X call / depend on?" → getCallees.',
+      '- "Which classes implement interface X?" / "what does Y extend?" → getImplementations.',
+      '- "What is inside file X?" → getFileContext with that exact filePath.',
+      '- "How does module/directory X fit in?" / dependency structure → getModuleOverview.',
+      '- Turn a bare symbol name into an exact nodeId first → getDefinition (nodeId OR name+type), then traverse.',
       this.tavily.isAvailable
-        ? '- web_search: ONLY for public concepts, library documentation, or standards that are NOT specific to this repository. Never use it as a substitute for codebase retrieval.'
-        : '- web_search is UNAVAILABLE (no API key). Do not call it.',
-      '- You may call multiple tools in one turn.',
-      '- Do NOT invent Cypher or SQL.',
-      '- If you already have enough evidence from prior tool results, call no tools and let synthesis proceed.',
+        ? '- External library behavior or public concepts not owned by this repo → web_search. Never for codebase facts.'
+        : '- web_search is UNAVAILABLE (no API key configured). Do not call it.',
+      '',
+      '## Argument quality rules:',
+      '- Semantic queries (vector_search, hybrid_search) must be short keyword phrases: "websocket auth guard", NOT the user\'s full sentence.',
+      '- Expand pronouns and vague references using conversation history and recently discussed entities before writing a query.',
+      '- Graph tools need EXACT nodeIds/filePaths. Take them from user text, recent entities, or earlier tool results — never guess paths.',
+      '- Chain steps when needed: hybrid_search/vector_search to discover files → getDefinition/getFileContext/getCallers on those results for structural depth.',
+      '',
+      '## Efficiency rules:',
+      '- Call 1-3 tools per turn; run independent lookups in parallel within the same turn.',
+      '- Never repeat a tool call with identical arguments you already ran this turn.',
+      '- If prior tool results already cover the question well, return NO function calls so synthesis can proceed.',
     ].join('\n');
 
-    const textParts = [historyText, `Question: ${input.question}`, recent, prior, 'Choose tool calls now.'].filter(Boolean);
+    const textParts = [
+      historyText,
+      `User question: ${input.question}`,
+      recent,
+      prior,
+      'Select retrieval tool calls now (or none if evidence is sufficient).',
+    ].filter(Boolean);
 
     const contents: Content[] = [
       {

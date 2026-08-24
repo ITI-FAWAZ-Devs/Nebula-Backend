@@ -15,7 +15,11 @@ export class FollowupGeneratorService {
         `Answer: ${answer.slice(0, 1500)}`,
         '',
         'Suggest 3 logical follow-up questions a developer might ask next.',
-        'Return ONLY a JSON array of 3 strings. Example: ["How do I test this?", "Where is error handling defined?", "What dependencies does it use?"]',
+        'Rules:',
+        '- Each question must be answerable from THIS repository (its code, structure, or behavior) — not generic advice.',
+        '- Reference concrete files, classes, or modules mentioned in the answer where possible.',
+        '- Vary the angle: one drilling deeper, one about relationships/usage, one about edge cases or configuration.',
+        'Return ONLY a JSON array of 3 strings. Example: ["How does AgentLoopService handle tool failures?", "Which modules depend on ChromaService?", "What happens when the embedding provider is down?"]',
         'Do not wrap in markdown block quotes or extra text.',
       ].join('\n');
 

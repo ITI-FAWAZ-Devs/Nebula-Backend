@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CloudClient } from 'chromadb';
+import { CloudClient, Collection } from 'chromadb';
 
 @Injectable()
 export class ChromaService {
   private readonly logger = new Logger(ChromaService.name);
   private readonly client: CloudClient;
+  /** In-process cache so repeated getOrCreate calls stay local (no HTTP round-trip). */
+  private readonly collections = new Map<string, Promise<Collection>>();
 
   constructor(private readonly configService: ConfigService) {
     const host =
@@ -30,19 +32,37 @@ export class ChromaService {
 
   /**
    * Retrieves an existing collection or creates it if it doesn't exist.
+   * Results are cached in-process (promise-coalesced) so concurrent callers
+   * share a single network round-trip and subsequent calls are free.
    */
-  async getOrCreateCollection(collectionName: string) {
-    try {
-      this.logger.log(`Get or create Chroma collection: ${collectionName}`);
-      return await this.client.getOrCreateCollection({
-        name: collectionName,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to get or create collection ${collectionName}: ${(error as Error).message}`,
-      );
-      throw error;
+  async getOrCreateCollection(collectionName: string): Promise<Collection> {
+    const cached = this.collections.get(collectionName);
+    if (cached) {
+      this.logger.debug(`Chroma collection cache hit: ${collectionName}`);
+      return cached;
     }
+
+    const pending = this.client
+      .getOrCreateCollection({
+        name: collectionName,
+      })
+      .then((collection) => {
+        this.logger.debug(
+          `Chroma collection fetched and cached: ${collectionName}`,
+        );
+        return collection;
+      })
+      .catch((error: unknown) => {
+        // Don't poison the cache — allow a retry on the next call.
+        this.collections.delete(collectionName);
+        this.logger.error(
+          `Failed to get or create collection ${collectionName}: ${(error as Error).message}`,
+        );
+        throw error;
+      });
+
+    this.collections.set(collectionName, pending);
+    return pending;
   }
 
   /**
@@ -65,6 +85,7 @@ export class ChromaService {
   async deleteCollection(collectionName: string) {
     try {
       this.logger.log(`Deleting Chroma collection: ${collectionName}`);
+      this.collections.delete(collectionName);
       await this.client.deleteCollection({
         name: collectionName,
       });
@@ -223,6 +244,49 @@ export class ChromaService {
     } catch (error) {
       this.logger.error(
         `Failed to query collection ${collectionName}: ${(error as Error).message}`,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Fetches documents by exact chunk ids in a single request — no embedding
+   * and no similarity search required. Ideal when ids are deterministic
+   * (e.g. `${repositoryId}:${filePath}` description chunks).
+   * Missing ids are simply absent from the response.
+   */
+  async getByIds(
+    collectionName: string,
+    ids: string[],
+  ): Promise<{
+    ids: string[];
+    documents: (string | null)[];
+    metadatas: (Record<string, unknown> | null)[];
+  }> {
+    if (ids.length === 0) {
+      return { ids: [], documents: [], metadatas: [] };
+    }
+
+    try {
+      const collection = await this.getOrCreateCollection(collectionName);
+      this.logger.debug(
+        `Fetching ${ids.length} chunk(s) by id from ${collectionName}`,
+      );
+      const result = await collection.get({
+        ids: ids as [`${string}:${string}`, ...`${string}:${string}`[]],
+        include: ['documents', 'metadatas'],
+      });
+      return {
+        ids: result.ids ?? [],
+        documents: (result.documents ?? []) as (string | null)[],
+        metadatas: (result.metadatas ?? []) as (
+          | Record<string, unknown>
+          | null
+        )[],
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch chunks by id from ${collectionName}: ${(error as Error).message}`,
       );
       throw error;
     }

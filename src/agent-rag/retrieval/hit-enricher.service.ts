@@ -1,6 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ChromaService } from '../../chroma/chroma.service';
-import { GeminiService } from '../../gemini/gemini.service';
 import { RetrievalHit } from '../dto/retrieval-hit.dto';
 import {
   buildGraphSummary,
@@ -15,11 +14,8 @@ import { GraphToolNode } from '../../neo4j/neo4j.service';
  */
 @Injectable()
 export class HitEnricherService {
-  private readonly logger = new Logger(HitEnricherService.name);
-
   constructor(
     private readonly chroma: ChromaService,
-    private readonly gemini: GeminiService,
   ) {}
 
   mapGraphNode(node: GraphToolNode, score = 0.5): RetrievalHit {
@@ -74,36 +70,32 @@ export class HitEnricherService {
 
     const collectionName = `repo-${repositoryId}`;
 
-    // Batch by querying with a dummy embedding + filePath where filter.
-    // One query per unique path keeps results precise for enrichment.
-    let embedding: number[];
-    try {
-      embedding = await this.gemini.embedString('file description lookup');
-    } catch (error) {
-      this.logger.warn(
-        `Hit enricher embedding failed: ${(error as Error).message}`,
-      );
-      return map;
-    }
-
-    await Promise.all(
-      filePaths.slice(0, 20).map(async (filePath) => {
-        try {
-          const result = await this.chroma.queryCollection(
-            collectionName,
-            embedding,
-            1,
-            { filePath },
-          );
-          const doc = result.documents?.[0]?.[0];
-          if (doc) {
-            map.set(filePath, doc);
-          }
-        } catch {
-          // Missing collection or no match — leave graph summary.
-        }
-      }),
+    // Description chunks have deterministic ids (`${repositoryId}:${filePath}`)
+    // — one chunk per file — so a single get-by-ids call replaces per-path
+    // similarity queries entirely (no embedding, no extra round-trips).
+    const paths = filePaths.slice(0, 20);
+    const requestedIds = new Map<string, string>(
+      paths.map(
+        (filePath) =>
+          [`${repositoryId}:${filePath}`, filePath] as [string, string],
+      ),
     );
+
+    try {
+      const result = await this.chroma.getByIds(
+        collectionName,
+        [...requestedIds.keys()],
+      );
+      result.ids.forEach((id, i) => {
+        const doc = result.documents[i];
+        const originalPath = requestedIds.get(id);
+        if (doc && originalPath) {
+          map.set(originalPath, doc);
+        }
+      });
+    } catch {
+      // Missing collection or transient failure — keep graph summaries.
+    }
 
     return map;
   }

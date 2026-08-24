@@ -29,21 +29,26 @@ export class SynthesizerService {
     return [
       'You are a DeepWiki-style repository guide — an expert on this codebase who walks developers through how it works.',
       '',
+      '## Citation contract (strict):',
+      '- Every repository claim MUST be backed by a context block, cited inline as [filePath] — e.g. [src/auth/guard.ts].',
+      '- Cite ONLY file paths that appear verbatim in the provided context headers. NEVER invent, abbreviate, or modify paths.',
+      '- Do not add line numbers unless a context header explicitly shows them.',
+      '- Only cite files you actually rely on for the explanation; do not cite everything you received.',
+      '- Web results must be labeled "(external)" and never presented as repository facts; they are never cited as [filePath].',
+      '',
       'Your response MUST follow this exact structure:',
       '',
       '## Answer',
       'A concise, precise technical explanation. Explain the concept or mechanism clearly.',
-      'Mention key design decisions and trade-offs when relevant.',
+      'Mention key design decisions and trade-offs when relevant. Place citations next to the claims they support.',
       '',
       '## Where this shows up in the codebase',
-      'Walk through the actual code locations using inline citations in the form [filePath:lineRange] when lineRange is known, or [filePath] otherwise.',
-      'Write in a narrative style, connecting how the pieces relate.',
+      'Walk through the actual code locations using inline citations in the form [filePath], connecting how the pieces relate.',
       'Add a short comparison table when listing related processes, services, or modules.',
       '',
       'Guidelines:',
       '- Ground every repository claim in the provided context. Do NOT invent file names, function names, or architecture.',
       '- If the context does not cover something, say so explicitly — never guess.',
-      '- If web search results are provided under "Web search results", use them only for public concepts or library documentation and label them as "(external)" — never present them as repository facts.',
       '- Be concise but thorough. Speak like a senior engineer who knows this codebase deeply.',
       '- Always use code formatting for file paths, function names, and identifiers.',
     ].join('\n');
@@ -59,7 +64,7 @@ export class SynthesizerService {
     const prompt = [
       `Question: ${question}`,
       '',
-      'Context:',
+      'Context (each block starts with its citation header — cite files using exactly those paths):',
       contextText || '(no context retrieved)',
       '',
       'Answer:',
@@ -79,7 +84,7 @@ export class SynthesizerService {
 
     return {
       answer,
-      citations: this.citationsFromHits(selectedHits),
+      citations: this.citationsFromAnswer(answer, selectedHits),
     };
   }
 
@@ -93,7 +98,7 @@ export class SynthesizerService {
     const prompt = [
       `Question: ${question}`,
       '',
-      'Context:',
+      'Context (each block starts with its citation header — cite files using exactly those paths):',
       contextText || '(no context retrieved)',
       '',
       'Answer:',
@@ -116,11 +121,60 @@ export class SynthesizerService {
       }
     }
 
-    const citations = this.citationsFromHits(selectedHits);
+    const citations = this.citationsFromAnswer(answer, selectedHits);
     yield {
       type: 'done',
       data: { answer, citations },
     };
+  }
+
+  /**
+   * Builds citations from the inline `[filePath]` / `[filePath:lineRange]`
+   * markers the model actually emitted in its answer, validated against the
+   * retrieved hits. Only files referenced by the answer are cited, in
+   * first-appearance order — instead of every hit that was retrieved.
+   * Line ranges always come from retrieval metadata (graph sourceLocation),
+   * never from the model, to avoid hallucinated locations.
+   */
+  private citationsFromAnswer(
+    answer: string,
+    hits: RetrievalHit[],
+  ): AgentCitation[] {
+    const byPath = new Map<string, RetrievalHit>();
+    for (const hit of hits) {
+      if (!hit.filePath) continue;
+      const existing = byPath.get(hit.filePath);
+      if (!existing || hit.score > existing.score) {
+        byPath.set(hit.filePath, hit);
+      }
+    }
+    if (byPath.size === 0 || !answer) {
+      return this.citationsFromHits(hits);
+    }
+
+    const cited = new Map<string, AgentCitation>();
+
+    for (const match of answer.matchAll(/\[([^\[\]\n]+)\]/g)) {
+      const token = match[1].trim();
+      // Accept both `[path]` and `[path:12]` / `[path:12-20]`; the optional
+      // range is only used for recognition, never as the citation location.
+      const rangeMatch = token.match(/^(.+):(\d+(?:\s*-\s*\d+)?)$/);
+      const path = (rangeMatch ? rangeMatch[1] : token).trim();
+      const hit = byPath.get(path);
+      if (!hit || cited.has(hit.nodeId)) continue;
+      cited.set(hit.nodeId, {
+        filePath: hit.filePath as string,
+        lineRange: hit.lineRange,
+        nodeId: hit.nodeId,
+        snippet: hit.content || undefined,
+      });
+    }
+
+    // Fallback when the model ignored the citation format.
+    if (cited.size === 0) {
+      return this.citationsFromHits(hits);
+    }
+    return [...cited.values()];
   }
 
   private citationsFromHits(hits: RetrievalHit[]): AgentCitation[] {
