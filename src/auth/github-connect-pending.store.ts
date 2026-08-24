@@ -15,6 +15,8 @@ export interface GithubConnectPendingPayload {
   organizationId: string | null;
   existingLogins: string[];
   returnTo: string;
+  /** 'add-org' when initiated from GET /auth/github/connect/add-org */
+  flow?: string | null;
 }
 
 type StoreEntry = { data: GithubConnectPendingPayload; expiresAt: number };

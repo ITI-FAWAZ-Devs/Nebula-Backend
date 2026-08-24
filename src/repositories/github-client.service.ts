@@ -10,6 +10,13 @@ export interface GitHubRepoDetails {
   defaultBranch: string;
   isPrivate: boolean;
   cloneUrl: string;
+  updatedAt?: string;
+}
+
+export interface GitHubRepoFilters {
+  search?: string;
+  visibility?: 'public' | 'private' | 'all';
+  sort?: 'name' | 'updated';
 }
 
 @Injectable()
@@ -30,12 +37,14 @@ export class GithubClientService {
     forceRefresh = false,
     connectionId?: string,
     organizationId?: string,
+    filters?: GitHubRepoFilters,
   ): Promise<GitHubRepoDetails[]> {
+    // Raw fetch is cached without filters; filtering is applied after cache lookup
     const cacheKey = [userId, connectionId ?? 'all', organizationId ?? 'personal'].join(':');
     if (!forceRefresh) {
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-        return cached.data;
+        return this.applyFilters(cached.data, filters);
       }
     }
 
@@ -53,10 +62,45 @@ export class GithubClientService {
       defaultBranch: repo.defaultBranch,
       isPrivate: repo.isPrivate,
       cloneUrl: repo.cloneUrl,
+      updatedAt: repo.updatedAt,
     }));
 
     this.cache.set(cacheKey, { data: mapped, timestamp: Date.now() });
-    return mapped;
+    return this.applyFilters(mapped, filters);
+  }
+
+  private applyFilters(
+    repos: GitHubRepoDetails[],
+    filters?: GitHubRepoFilters,
+  ): GitHubRepoDetails[] {
+    if (!filters) return repos;
+
+    let result = repos;
+
+    // Search by name (case-insensitive substring)
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      result = result.filter((r) => r.name.toLowerCase().includes(q));
+    }
+
+    // Visibility filter
+    if (filters.visibility && filters.visibility !== 'all') {
+      const wantPrivate = filters.visibility === 'private';
+      result = result.filter((r) => r.isPrivate === wantPrivate);
+    }
+
+    // Sort
+    if (filters.sort === 'name') {
+      result = [...result].sort((a, b) => a.name.localeCompare(b.name));
+    } else if (filters.sort === 'updated') {
+      result = [...result].sort((a, b) => {
+        const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return tb - ta; // most recently updated first
+      });
+    }
+
+    return result;
   }
 
   async getLatestCommitSha(

@@ -63,6 +63,11 @@ export class RepositoriesController {
       forceRefresh,
       query.connectionId,
       query.organizationId,
+      {
+        search: query.search,
+        visibility: query.visibility,
+        sort: query.sort,
+      },
     );
 
     // Apply pagination if parameters are provided
@@ -94,6 +99,7 @@ export class RepositoriesController {
       },
     };
   }
+
 
   /**
    * POST /repositories/import

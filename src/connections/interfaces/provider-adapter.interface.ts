@@ -14,6 +14,7 @@ export interface RemoteRepository {
   defaultBranch: string;
   isPrivate: boolean;
   cloneUrl: string;
+  updatedAt?: string;
 }
 
 export interface IProviderAdapter {

@@ -94,6 +94,7 @@ export class GithubAdapter implements IProviderAdapter {
           defaultBranch: r.default_branch || 'main',
           isPrivate: r.private === true,
           cloneUrl: r.clone_url,
+          updatedAt: r.updated_at ?? undefined,
         })),
       );
 
@@ -141,6 +142,7 @@ export class GithubAdapter implements IProviderAdapter {
         defaultBranch: repo.default_branch || 'main',
         isPrivate: repo.private === true,
         cloneUrl: repo.clone_url,
+        updatedAt: repo.updated_at ?? undefined,
       }));
 
       allRepos.push(...mapped);
@@ -235,6 +237,7 @@ export class GithubAdapter implements IProviderAdapter {
       defaultBranch: data.default_branch || 'main',
       isPrivate: data.private === true,
       cloneUrl: data.clone_url || `https://github.com/${owner}/${repo}.git`,
+      updatedAt: data.updated_at ?? undefined,
     };
   }
 }

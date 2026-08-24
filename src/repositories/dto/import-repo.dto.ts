@@ -35,6 +35,11 @@ export class ImportRepoDto {
   @IsNotEmpty()
   cloneUrl: string;
 
+  /** Remote last-updated timestamp from GitHub; informational only. */
+  @IsOptional()
+  @IsString()
+  updatedAt?: string;
+
   @IsOptional()
   @IsUUID()
   organizationId?: string;

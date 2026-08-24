@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  Redirect,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
@@ -305,6 +306,36 @@ export class AuthController {
   }
 
   /**
+   * GET /auth/github/connect/add-org
+   * Authenticated entry point for the "Add GitHub Organization" button.
+   * Builds the same connect-flow state consumed by /auth/github/connect and
+   * redirects there, so the user is sent to GitHub OAuth and — after
+   * authorising — lands on the org-picker page exactly like a normal connect.
+   */
+  @SkipResponseIntercept()
+  @Get('github/connect/add-org')
+  async githubConnectAddOrg(
+    @CurrentUser('id') userId: string,
+    @Query('organizationId') organizationId: string | undefined,
+    @Query('returnTo') returnTo: string | undefined,
+    @Res() res: Response,
+  ) {
+    const state = Buffer.from(
+      JSON.stringify({
+        purpose: 'connect',
+        flow: 'add-org',
+        userId,
+        workspace: organizationId ? 'organization' : 'personal',
+        organizationId: organizationId ?? null,
+        returnTo,
+      }),
+    ).toString('base64');
+
+    const params = new URLSearchParams({ state });
+    return (res as any).redirect(`/api/auth/github/connect?${params.toString()}`);
+  }
+
+  /**
    * GET /auth/github/callback
    * Single callback for both login and connect flows.
    *
@@ -364,6 +395,7 @@ export class AuthController {
         organizationId: state.organizationId ?? null,
         existingLogins,
         returnTo: this.safeReturnTo(state.returnTo),
+        flow: state.flow ?? null,
       });
 
       res.clearCookie('nebula_github_connect_state', { path: '/' });
