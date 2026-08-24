@@ -25,6 +25,8 @@ import {
 } from './dto/architecture-doc.dto';
 import { GithubClientService } from '../repositories/github-client.service';
 import { SubscriptionService } from '../subscription/subscription.service';
+import { OrganizationsService } from '../organizations/organizations.service';
+import { Permission } from '../organizations/permissions';
 
 const ACTIVE_STATUSES: DocStatus[] = [
   DocStatus.PENDING,
@@ -43,6 +45,7 @@ export class ArchitectureDocService {
     private readonly progress: ProgressEventsService,
     private readonly githubClientService: GithubClientService,
     private readonly subscriptionService: SubscriptionService,
+    private readonly organizationsService: OrganizationsService,
   ) {}
 
   async start(
@@ -50,7 +53,7 @@ export class ArchitectureDocService {
     repositoryId: string,
     dto: CreateArchitectureDocDto = {},
   ): Promise<ArchitectureDocTriggerResponse> {
-    const repository = await this.findOwnedRepository(userId, repositoryId);
+    const repository = await this.findOwnedRepository(userId, repositoryId, Permission.REPO_PROCESS);
     this.assertRepositoryReady(repository);
     this.assertValidCommit(repository, dto.commitSha);
 
@@ -87,7 +90,7 @@ export class ArchitectureDocService {
     userId: string,
     repositoryId: string,
   ): Promise<ArchitectureDocRegenerateResponse> {
-    const repository = await this.findOwnedRepository(userId, repositoryId);
+    const repository = await this.findOwnedRepository(userId, repositoryId, Permission.REPO_PROCESS);
     this.assertRepositoryReady(repository);
 
     const activeDoc = await this.findActiveDocument(repositoryId);
@@ -421,7 +424,11 @@ export class ArchitectureDocService {
     );
   }
 
-  private async findOwnedRepository(userId: string, repositoryId: string) {
+  private async findOwnedRepository(
+    userId: string,
+    repositoryId: string,
+    requiredPermission: string = Permission.REPO_READ,
+  ) {
     const repository = await this.prisma.repository.findFirst({
       where: { id: repositoryId },
     });
@@ -430,7 +437,15 @@ export class ArchitectureDocService {
       throw new NotFoundException('Repository not found');
     }
 
-    if (repository.userId !== userId) {
+    if (repository.organizationId) {
+      const permissions = await this.organizationsService.getMemberPermissions(
+        userId,
+        repository.organizationId,
+      );
+      if (!permissions || !permissions.includes(requiredPermission)) {
+        throw new ForbiddenException('You do not have access to this repository');
+      }
+    } else if (repository.userId !== userId) {
       throw new ForbiddenException('You do not have access to this repository');
     }
 

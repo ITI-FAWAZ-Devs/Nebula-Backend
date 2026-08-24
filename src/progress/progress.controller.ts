@@ -43,7 +43,17 @@ export class ProgressController {
       throw new NotFoundException('Repository not found');
     }
 
-    if (repository.userId !== userId) {
+    if (repository.organizationId) {
+      const isMember = await this.prisma.organizationMember.findFirst({
+        where: {
+          orgId: repository.organizationId,
+          userId,
+        },
+      });
+      if (!isMember) {
+        throw new ForbiddenException('You do not have access to this repository');
+      }
+    } else if (repository.userId !== userId) {
       throw new ForbiddenException('You do not have access to this repository');
     }
 

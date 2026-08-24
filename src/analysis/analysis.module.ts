@@ -11,6 +11,7 @@ import { DiscoveryModule } from '../discovery/discovery.module';
 import { GraphifyModule } from '../graphify/graphify.module';
 import { GraphModule } from '../graph/graph.module';
 import { Neo4jModule } from '../neo4j/neo4j.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { Neo4jModule } from '../neo4j/neo4j.module';
     GraphifyModule,
     GraphModule,
     Neo4jModule,
+    OrganizationsModule,
   ],
   providers: [AnalysisService, AnalysisPipeline, AnalysisProcessor],
   exports: [AnalysisService, BullModule],

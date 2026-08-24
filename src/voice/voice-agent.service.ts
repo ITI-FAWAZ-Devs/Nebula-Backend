@@ -225,7 +225,19 @@ export class VoiceAgentService {
       where: { id: repositoryId },
     });
     if (!repo) throw new NotFoundException('Repository not found');
-    if (repo.userId !== userId) throw new ForbiddenException('You do not own this repository');
+    if (repo.organizationId) {
+      const isMember = await this.prisma.organizationMember.findFirst({
+        where: {
+          orgId: repo.organizationId,
+          userId,
+        },
+      });
+      if (!isMember) {
+        throw new ForbiddenException('You do not own this repository');
+      }
+    } else if (repo.userId !== userId) {
+      throw new ForbiddenException('You do not own this repository');
+    }
 
     // Create (or reuse) an agent session for conversation history
     const agentSession = await this.sessionStore.create(repositoryId, userId);

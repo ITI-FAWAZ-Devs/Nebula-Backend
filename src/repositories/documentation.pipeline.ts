@@ -17,6 +17,7 @@ import {
 } from '../ai-provider/embedding-space.util';
 import { ChromaService } from '../chroma/chroma.service';
 import { SubscriptionService } from '../subscription/subscription.service';
+import { MailService } from '../mail/mail.service';
 import {
   fromPrismaJson,
   markStage,
@@ -45,6 +46,7 @@ export class DocumentationPipeline {
     private readonly aiProviderService: AiProviderService,
     private readonly chromaService: ChromaService,
     private readonly subscriptionService: SubscriptionService,
+    private readonly mailService: MailService,
     configService: ConfigService,
   ) {
     this.describeConcurrency =
@@ -151,6 +153,10 @@ export class DocumentationPipeline {
         'discovery',
         RepositoryStatus.INDEXING,
       );
+      await this.updateJob(repositoryId, jobId, {
+        stage: 'discovery',
+        progress: 20,
+      });
       await this.discoveryService.scan(localPath);
 
       const files = await this.getFilesRecursively(localPath);
@@ -176,7 +182,7 @@ export class DocumentationPipeline {
           completedCount += 1;
           await this.updateJob(repositoryId, jobId, {
             stage: 'describe_files',
-            progress: Math.round((completedCount / files.length) * 100),
+            progress: 20 + Math.round((completedCount / files.length) * 55),
           });
           return;
         }
@@ -203,7 +209,7 @@ export class DocumentationPipeline {
         completedCount += 1;
         await this.updateJob(repositoryId, jobId, {
           stage: 'describe_files',
-          progress: Math.round((completedCount / files.length) * 100),
+          progress: 20 + Math.round((completedCount / files.length) * 55),
         });
 
         if (this.describeDelayMs > 0) {
@@ -223,7 +229,7 @@ export class DocumentationPipeline {
       if (completedCount > 0) {
         await this.updateJob(repositoryId, jobId, {
           stage: 'describe_files',
-          progress: Math.round((completedCount / files.length) * 100),
+          progress: 20 + Math.round((completedCount / files.length) * 55),
         });
       }
 
@@ -261,6 +267,10 @@ export class DocumentationPipeline {
       // ── Stage: embed_descriptions ────────────────────────────────────────────
       if (!hasStage(checkpoint, 'embed_descriptions')) {
         await this.setStage(jobId, repositoryId, 'embed_descriptions', null);
+        await this.updateJob(repositoryId, jobId, {
+          stage: 'embed_descriptions',
+          progress: 80,
+        });
         const textToEmbed = validDescriptions.map((d) => d.description);
         const embedResult = await this.aiProviderService.embedMany(
           textToEmbed,
@@ -288,6 +298,10 @@ export class DocumentationPipeline {
 
         // ── Stage: save_chroma ─────────────────────────────────────────────────
         await this.setStage(jobId, repositoryId, 'save_chroma', null);
+        await this.updateJob(repositoryId, jobId, {
+          stage: 'save_chroma',
+          progress: 92,
+        });
         const collectionName = collectionNameFor(repositoryId, embedResult);
         await this.chromaService.deleteCollection(collectionName);
         await this.chromaService.upsertChunks(collectionName, chunks);
@@ -327,6 +341,18 @@ export class DocumentationPipeline {
       this.logger.log(
         `[${jobId}] Documentation indexing completed for repository ${repositoryId}`,
       );
+
+      // ── Completion emails ─────────────────────────────────────────────────
+      // Send to: triggering developer, repo owner (if different), org owner (if org repo)
+      await this.sendCompletionEmails(
+        repositoryId,
+        userId,
+        'Documentation Indexing',
+      ).catch((err) =>
+        this.logger.warn(
+          `[${jobId}] Could not send completion email(s): ${(err as Error).message}`,
+        ),
+      );
     } catch (error) {
       const message =
         (error as Error).message || 'Unknown documentation pipeline error';
@@ -362,6 +388,76 @@ export class DocumentationPipeline {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Sends a job-completed email to all relevant parties:
+   *  - the user who triggered the job
+   *  - the repo owner (if different from the triggering user)
+   *  - the org owner (if this is an org-scoped repo and different from the above)
+   */
+  private async sendCompletionEmails(
+    repositoryId: string,
+    triggeringUserId: string,
+    pipeline: string,
+  ): Promise<void> {
+    const repository = await this.prisma.repository.findUnique({
+      where: { id: repositoryId },
+      include: {
+        user: true,
+        organization: { include: { owner: true } },
+      },
+    });
+    if (!repository) return;
+
+    const repositoryName = `${repository.owner}/${repository.name}`;
+
+    // Collect unique (userId → user) entries to notify
+    const recipientMap = new Map<string, { email: string; fullName: string | null }>();
+
+    // 1. Triggering user (developer who started the job)
+    const triggeringUser = await this.prisma.user.findUnique({
+      where: { id: triggeringUserId },
+      select: { email: true, fullName: true },
+    });
+    if (triggeringUser?.email) {
+      recipientMap.set(triggeringUserId, triggeringUser);
+    }
+
+    // 2. Repo owner (userId on the repository record)
+    if (repository.user?.email && !recipientMap.has(repository.userId)) {
+      recipientMap.set(repository.userId, repository.user);
+    }
+
+    // 3. Org owner (if org-scoped)
+    if (
+      repository.organization?.owner?.email &&
+      !recipientMap.has(repository.organization.ownerId)
+    ) {
+      recipientMap.set(
+        repository.organization.ownerId,
+        repository.organization.owner,
+      );
+    }
+
+    // Send to all unique recipients
+    await Promise.allSettled(
+      [...recipientMap.values()].map((recipient) =>
+        this.mailService
+          .sendJobCompletedEmail({
+            email: recipient.email,
+            fullName: recipient.fullName ?? undefined,
+            repositoryName,
+            repositoryId,
+            pipeline,
+          })
+          .catch((err) =>
+            this.logger.warn(
+              `Failed to send completion email to ${recipient.email}: ${(err as Error).message}`,
+            ),
+          ),
+      ),
+    );
+  }
 
   private async loadDescriptions(
     descriptionsPath: string,

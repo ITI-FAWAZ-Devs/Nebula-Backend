@@ -1,9 +1,9 @@
 import { Logger } from '@nestjs/common';
-import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { STTProvider } from './stt-provider.interface';
+import { spawnCrossPlatform } from '../cross-platform-spawn.util';
 
 /**
  * WhisperSTTProvider
@@ -109,18 +109,18 @@ export class WhisperSTTProvider implements STTProvider {
         'en',
       ];
 
-      const proc = spawn(this.whisperBin, args, {
+      const proc = spawnCrossPlatform(this.whisperBin, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
       let stdout = '';
       let stderr = '';
 
-      proc.stdout.on('data', (d: Buffer) => {
+      proc.stdout?.on('data', (d: Buffer) => {
         stdout += d.toString();
       });
 
-      proc.stderr.on('data', (d: Buffer) => {
+      proc.stderr?.on('data', (d: Buffer) => {
         stderr += d.toString();
       });
 

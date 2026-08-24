@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
-import { ChildProcess, spawn } from 'child_process';
+import { ChildProcess } from 'child_process';
 import { TTSProvider } from './tts-provider.interface';
+import { spawnCrossPlatform } from '../cross-platform-spawn.util';
 
 /**
  * PiperTTSProvider
@@ -40,16 +41,16 @@ export class PiperTTSProvider implements TTSProvider {
         '--output-raw',
       ];
 
-      const proc = spawn(this.piperBin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      const proc = spawnCrossPlatform(this.piperBin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
       this.currentProcess = proc;
 
-      proc.stdout.on('data', (chunk: Buffer) => {
+      proc.stdout?.on('data', (chunk: Buffer) => {
         if (this.speaking) {
           this.audioCallback?.(chunk);
         }
       });
 
-      proc.stderr.on('data', (d: Buffer) => {
+      proc.stderr?.on('data', (d: Buffer) => {
         this.logger.verbose(`piper stderr: ${d.toString().trim()}`);
       });
 
@@ -69,8 +70,8 @@ export class PiperTTSProvider implements TTSProvider {
         resolve();
       });
 
-      proc.stdin.write(cleaned + '\n');
-      proc.stdin.end();
+      proc.stdin?.write(cleaned + '\n');
+      proc.stdin?.end();
     });
   }
 

@@ -9,6 +9,8 @@ import { AnalysisJobStatus, RepositoryStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProgressEventsService } from '../progress/progress-events.service';
 import { ANALYSIS_QUEUE, AnalysisJobPayload } from './analysis.constants';
+import { OrganizationsService } from '../organizations/organizations.service';
+import { Permission } from '../organizations/permissions';
 
 @Injectable()
 export class AnalysisService {
@@ -16,6 +18,7 @@ export class AnalysisService {
     private readonly prisma: PrismaService,
     @InjectQueue(ANALYSIS_QUEUE) private readonly analysisQueue: Queue,
     private readonly progress: ProgressEventsService,
+    private readonly organizationsService: OrganizationsService,
   ) {}
 
   async startAnalysis(userId: string, repositoryId: string) {
@@ -27,7 +30,17 @@ export class AnalysisService {
       throw new NotFoundException('Repository not found');
     }
 
-    if (repository.userId !== userId) {
+    // For org-scoped repos, verify the user has repo.process permission.
+    // Viewers (repo.read only) are not allowed to trigger analysis.
+    if (repository.organizationId) {
+      const permissions = await this.organizationsService.getMemberPermissions(
+        userId,
+        repository.organizationId,
+      );
+      if (!permissions || !permissions.includes(Permission.REPO_PROCESS)) {
+        throw new ForbiddenException('You do not have access to this repository');
+      }
+    } else if (repository.userId !== userId) {
       throw new ForbiddenException('You do not have access to this repository');
     }
 
@@ -101,7 +114,16 @@ export class AnalysisService {
       throw new NotFoundException('Repository not found');
     }
 
-    if (repository.userId !== userId) {
+    // Allow org members with at least repo.read to poll analysis job status.
+    if (repository.organizationId) {
+      const permissions = await this.organizationsService.getMemberPermissions(
+        userId,
+        repository.organizationId,
+      );
+      if (!permissions || !permissions.includes(Permission.REPO_READ)) {
+        throw new ForbiddenException('You do not have access to this repository');
+      }
+    } else if (repository.userId !== userId) {
       throw new ForbiddenException('You do not have access to this repository');
     }
 

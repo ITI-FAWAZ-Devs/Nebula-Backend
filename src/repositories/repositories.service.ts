@@ -12,6 +12,7 @@ import { ImportFromUrlDto } from './dto/import-url.dto';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { ConnectionsService } from '../connections/connections.service';
 import { parseRepoUrl } from '../connections/utils/repo-url-parser.util';
+import { Permission } from '../organizations/permissions';
 
 @Injectable()
 export class RepositoriesService {
@@ -262,8 +263,19 @@ export class RepositoriesService {
    * architecture document exists along with its latest version and commit.
    */
   async getArchitectureDocStatus(userId: string) {
-    const repos = await this.prisma.repository.findMany({
+    const userOrgs = await this.prisma.organizationMember.findMany({
       where: { userId },
+      select: { orgId: true },
+    });
+    const orgIds = userOrgs.map((o) => o.orgId);
+
+    const repos = await this.prisma.repository.findMany({
+      where: {
+        OR: [
+          { userId },
+          { organizationId: { in: orgIds } },
+        ],
+      },
       select: { id: true },
     });
 
@@ -368,6 +380,38 @@ export class RepositoriesService {
     });
 
     return { id };
+  }
+
+  /**
+   * Retrieves detail metadata for a single imported repository, enforcing
+   * that the requesting user has at least `repo.process` permission for
+   * org-scoped repos. Use this for write/mutating endpoints (document, ask, etc.).
+   * Throws ForbiddenException for Viewers (repo.read only).
+   */
+  async getImportedByIdForWrite(userId: string, id: string) {
+    const repo = await this.prisma.repository.findUnique({
+      where: { id },
+    });
+
+    if (!repo) {
+      throw new NotFoundException('Imported repository not found');
+    }
+
+    if (repo.organizationId) {
+      const permissions = await this.organizationsService.getMemberPermissions(
+        userId,
+        repo.organizationId,
+      );
+      if (!permissions || !permissions.includes(Permission.REPO_PROCESS)) {
+        throw new ForbiddenException(
+          'You do not have access to this repository',
+        );
+      }
+    } else if (repo.userId !== userId) {
+      throw new NotFoundException('Imported repository not found');
+    }
+
+    return repo;
   }
 }
 

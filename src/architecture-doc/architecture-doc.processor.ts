@@ -209,13 +209,15 @@ export class ArchitectureDocProcessor extends WorkerHost {
         }
       }
 
-      // ── Completion email ───────────────────────────────────────────────────
-      await this.sendCompletionEmail(
+      // ── Completion emails ─────────────────────────────────────────────────
+      // Send to: triggering developer, repo owner (if different), org owner (if org repo)
+      await this.sendCompletionEmails(
         repositoryId,
+        userId,
         'Architecture Documentation',
       ).catch((err) =>
         this.logger.warn(
-          `[${documentId}] Could not send completion email: ${(err as Error).message}`,
+          `[${documentId}] Could not send completion email(s): ${(err as Error).message}`,
         ),
       );
     } catch (error) {
@@ -252,23 +254,68 @@ export class ArchitectureDocProcessor extends WorkerHost {
     });
   }
 
-  private async sendCompletionEmail(
+  private async sendCompletionEmails(
     repositoryId: string,
+    triggeringUserId: string,
     pipeline: string,
   ): Promise<void> {
     const repository = await this.prisma.repository.findUnique({
       where: { id: repositoryId },
-      include: { user: true },
+      include: {
+        user: true,
+        organization: { include: { owner: true } },
+      },
     });
-    if (!repository?.user?.email) return;
+    if (!repository) return;
 
-    await this.mailService.sendJobCompletedEmail({
-      email: repository.user.email,
-      fullName: repository.user.fullName ?? undefined,
-      repositoryName: `${repository.owner}/${repository.name}`,
-      repositoryId,
-      pipeline,
+    const repositoryName = `${repository.owner}/${repository.name}`;
+
+    // Collect unique recipients: triggering user, repo owner, org owner
+    const recipientMap = new Map<string, { email: string; fullName: string | null }>();
+
+    // 1. Triggering user (developer who started the job)
+    const triggeringUser = await this.prisma.user.findUnique({
+      where: { id: triggeringUserId },
+      select: { email: true, fullName: true },
     });
+    if (triggeringUser?.email) {
+      recipientMap.set(triggeringUserId, triggeringUser);
+    }
+
+    // 2. Repo owner (userId on the repository record)
+    if (repository.user?.email && !recipientMap.has(repository.userId)) {
+      recipientMap.set(repository.userId, repository.user);
+    }
+
+    // 3. Org owner (if org-scoped)
+    if (
+      repository.organization?.owner?.email &&
+      !recipientMap.has(repository.organization.ownerId)
+    ) {
+      recipientMap.set(
+        repository.organization.ownerId,
+        repository.organization.owner,
+      );
+    }
+
+    // Send to all unique recipients
+    await Promise.allSettled(
+      [...recipientMap.values()].map((recipient) =>
+        this.mailService
+          .sendJobCompletedEmail({
+            email: recipient.email,
+            fullName: recipient.fullName ?? undefined,
+            repositoryName,
+            repositoryId,
+            pipeline,
+          })
+          .catch((err) =>
+            this.logger.warn(
+              `Failed to send completion email to ${recipient.email}: ${(err as Error).message}`,
+            ),
+          ),
+      ),
+    );
   }
 
   private async updateStatus(
