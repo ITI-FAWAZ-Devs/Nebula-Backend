@@ -67,7 +67,7 @@ export class VoiceGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('session.start')
   async onSessionStart(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { repositoryId: string },
+    @MessageBody() data: { repositoryId: string; threadId?: string },
   ) {
     const userId = client.data.userId as string;
     if (!userId) {
@@ -92,7 +92,13 @@ export class VoiceGateway implements OnGatewayConnection, OnGatewayDisconnect {
           onAgentDone: (payload) => client.emit('agent.done', payload),
           onTtsAudio: (chunk) => client.emit('tts.audio', chunk),
           onError: (message) => client.emit('error', { message }),
+          onPersisted: ({ agentSessionId, threadId }) =>
+            client.emit('conversation.saved', {
+              sessionId: agentSessionId,
+              threadId,
+            }),
         },
+        data.threadId ? { threadId: data.threadId } : undefined,
       );
 
       await session.startListening();

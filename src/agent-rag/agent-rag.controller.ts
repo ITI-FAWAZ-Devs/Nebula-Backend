@@ -106,8 +106,29 @@ export class AgentRagController {
   }
 
   /**
+   * All messages recorded for this agent session so far.
+   */
+  @Get('sessions/:sessionId/messages')
+  async getSessionMessages(
+    @CurrentUser('id') userId: string,
+    @Param('repositoryId', ParseUUIDPipe) repositoryId: string,
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+  ) {
+    const data = await this.agentRagService.getSessionMessages(
+      userId,
+      repositoryId,
+      sessionId,
+    );
+    return {
+      success: true,
+      message: 'Agent session messages retrieved',
+      data,
+    };
+  }
+
+  /**
    * Plan/execute server-side, then SSE-stream synthesizer tokens.
-   * Events: mode | progress | scanning | web_source | token | citation | done | followups | error
+   * Events: mode | progress | scanning | web_source | token | citation | done | followups | session | error
    */
   @Post('sessions/:sessionId/messages')
   @SkipResponseIntercept()
@@ -132,6 +153,7 @@ export class AgentRagController {
         question: dto.question,
         mode: dto.mode,
         model: dto.model,
+        threadId: dto.threadId,
       })) {
         res.write(`event: ${chunk.event}\n`);
         res.write(`data: ${JSON.stringify(chunk.data)}\n\n`);

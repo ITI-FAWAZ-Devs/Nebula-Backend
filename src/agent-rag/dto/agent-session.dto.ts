@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
 } from 'class-validator';
 
@@ -19,6 +20,8 @@ export interface AgentSessionRecord {
   turns: AgentSessionTurn[];
   updatedAt: string;
   model?: string;
+  /** Persisted conversation thread this session appends to (once known). */
+  threadId?: string;
 }
 
 export class AgentMessageDto {
@@ -34,16 +37,39 @@ export class AgentMessageDto {
   @IsOptional()
   @IsString()
   model?: string;
+
+  /**
+   * Existing conversation thread to append to. Allows a client resuming an
+   * old conversation (e.g. after the Redis session expired) to keep all
+   * messages in the same thread instead of forking a new one.
+   */
+  @IsOptional()
+  @IsUUID()
+  threadId?: string;
 }
 
 export interface CreateSessionResponse {
   sessionId: string;
   repositoryId: string;
+  threadId: string | null;
 }
 
 export interface SessionMetadataResponse {
   sessionId: string;
   repositoryId: string;
+  threadId: string | null;
   turnCount: number;
   updatedAt: string;
+}
+
+export interface SessionMessagesResponse {
+  sessionId: string;
+  repositoryId: string;
+  threadId: string | null;
+  messages: Array<{
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    turnIndex: number;
+  }>;
 }
