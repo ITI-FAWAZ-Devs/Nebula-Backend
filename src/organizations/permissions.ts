@@ -60,7 +60,7 @@ export const DEVELOPER_PERMISSIONS: PermissionValue[] = [
 /** Permissions granted to the built-in Viewer role. */
 export const VIEWER_PERMISSIONS: PermissionValue[] = [
   Permission.REPO_READ,
-  Permission.REPO_ASK,
+  // Permission.REPO_ASK,
 ];
 
 /**

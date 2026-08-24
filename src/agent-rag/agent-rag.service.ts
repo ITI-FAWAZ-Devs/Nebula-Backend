@@ -10,6 +10,7 @@ import { AgentSessionStore } from './session/agent-session.store';
 import { ConversationPersistenceService } from './persistence/conversation-persistence.service';
 import {
   CreateSessionResponse,
+  SessionMessagesResponse,
   SessionMetadataResponse,
 } from './dto/agent-session.dto';
 
@@ -32,6 +33,7 @@ export class AgentRagService {
     return {
       sessionId: session.sessionId,
       repositoryId: session.repositoryId,
+      threadId: session.threadId ?? null,
     };
   }
 
@@ -45,8 +47,44 @@ export class AgentRagService {
     return {
       sessionId: session.sessionId,
       repositoryId: session.repositoryId,
+      threadId: session.threadId ?? null,
       turnCount: session.turns.length,
       updatedAt: session.updatedAt,
+    };
+  }
+
+  /**
+   * All messages recorded for an active agent session (in-memory turn window).
+   * For the full durable history of a conversation use the thread endpoints.
+   */
+  async getSessionMessages(
+    userId: string,
+    repositoryId: string,
+    sessionId: string,
+  ): Promise<SessionMessagesResponse> {
+    await this.findOwnedRepository(userId, repositoryId);
+    const session = await this.requireSession(sessionId, userId, repositoryId);
+
+    const messages = session.turns.flatMap((turn, index) => [
+      {
+        id: `${sessionId}:turn-${index}:user`,
+        role: 'user' as const,
+        content: turn.q,
+        turnIndex: index,
+      },
+      {
+        id: `${sessionId}:turn-${index}:assistant`,
+        role: 'assistant' as const,
+        content: turn.a,
+        turnIndex: index,
+      },
+    ]);
+
+    return {
+      sessionId: session.sessionId,
+      repositoryId: session.repositoryId,
+      threadId: session.threadId ?? null,
+      messages,
     };
   }
 
@@ -57,6 +95,8 @@ export class AgentRagService {
     question: string;
     mode?: 'standard' | 'fast' | 'deep';
     model?: string;
+    /** Existing conversation thread to append to (client-provided). */
+    threadId?: string;
   }): AsyncGenerator<{ event: string; data: unknown }> {
     await this.findOwnedRepository(params.userId, params.repositoryId);
     const session = await this.requireSession(
@@ -70,6 +110,9 @@ export class AgentRagService {
     }
 
     const resolvedModel = params.model || session.model;
+    // Reuse the session's bound thread, or the client-requested one. Only the
+    // very first persisted turn (no binding anywhere) creates a new thread.
+    const activeThreadId = session.threadId ?? params.threadId;
     const recentNodeIds = this.sessions.recentCitedNodeIds(session);
     const conversationHistory = session.turns.map((t) => ({ q: t.q, a: t.a }));
     let finalAnswer = '';
@@ -115,13 +158,26 @@ export class AgentRagService {
         citedNodeIds,
       });
 
-      await this.persistence.persistTurn({
+      const { threadId } = await this.persistence.persistTurn({
         userId: params.userId,
         repositoryId: params.repositoryId,
+        threadId: activeThreadId,
         question: params.question,
         answer: finalAnswer,
         citations: citationsPayload,
       });
+
+      // Remember the thread on the session so every subsequent message in
+      // this session is appended to the same conversation history.
+      if (threadId !== session.threadId) {
+        await this.sessions.setThread(params.sessionId, threadId);
+      }
+
+      // Let the client learn/track the bound thread id.
+      yield {
+        event: 'session',
+        data: { sessionId: params.sessionId, threadId },
+      };
     }
   }
 
