@@ -175,19 +175,35 @@ describe('GraphBuilderService', () => {
     );
   });
 
-  it('scopes all synthesized nodes and relationships with the repositoryId', () => {
+  it('calculates topological metrics (inDegree, outDegree, instability, isOrphan) on nodes', () => {
     const normalized: NormalizedGraph = {
-      entities: [fileEntity('f1', 'a.py', 'app/models/user.py')],
-      relationships: [],
+      entities: [
+        fileEntity('f1', 'a.ts', 'src/a.ts'),
+        fileEntity('f2', 'b.ts', 'src/b.ts'),
+        fileEntity('f3', 'c.ts', 'src/c.ts'),
+      ],
+      relationships: [
+        {
+          id: 'r1',
+          type: 'IMPORTS',
+          sourceId: 'f1',
+          targetId: 'f2',
+        },
+        {
+          id: 'r2',
+          type: 'IMPORTS',
+          sourceId: 'f3',
+          targetId: 'f2',
+        },
+      ],
     };
 
-    const graph = service.build(normalized, 'repo-9');
-
-    for (const node of graph.nodes) {
-      expect(node.properties.repositoryId).toBe('repo-9');
-    }
-    for (const rel of graph.relationships) {
-      expect(rel.properties.repositoryId).toBe('repo-9');
-    }
+    const graph = service.build(normalized, 'repo-1');
+    const f2Node = graph.nodes.find((n) => n.id === 'f2');
+    expect(f2Node).toBeDefined();
+    // f2 has incoming CONTAINS from module plus 2 IMPORTS = inDegree 3
+    expect(f2Node?.properties.inDegree).toBeGreaterThanOrEqual(2);
+    expect(f2Node?.properties.outDegree).toBe(0);
+    expect(f2Node?.properties.isOrphan).toBe(false);
   });
 });

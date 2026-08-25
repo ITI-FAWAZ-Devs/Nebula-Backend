@@ -56,7 +56,9 @@ Strict output rules:
 - Keep any file path references inside the JSON string values only.
 - Every key must be double-quoted, every string must use double quotes, booleans/null are lowercase, and there must be no trailing commas.
 
-If all claims are supported, set verdict to "verified" and notes to null.
-If some claims are unsupported, you may rewrite the body to remove them and keep verdict "verified", or set verdict to "unverified" with notes explaining which claims lack support.
-If the section cannot be grounded at all, set verdict to "removed".`;
+Verification guidelines:
+- If all claims and code snippets are supported by the evidence, set verdict to "verified", rewrittenBody to null, and notes to null.
+- If some claims, snippets, or citations lack direct evidence or contain minor inaccuracies, PROACTIVELY rewrite the content in "rewrittenBody" by removing or rephrasing the unverified portions so the remaining section is 100% grounded in the evidence, and set verdict to "verified" (with a concise summary in "notes" of what was pruned/corrected).
+- Set verdict to "unverified" only if the section fundamentally contradicts the codebase, is largely fabricated, or cannot be salvaged even after removing ungrounded claims.
+- If the section is completely irrelevant or contains no valid architectural value, set verdict to "removed".`;
 }

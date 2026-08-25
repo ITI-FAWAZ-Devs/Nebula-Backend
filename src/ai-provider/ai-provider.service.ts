@@ -290,18 +290,64 @@ export class AiProviderService {
       throw new Error(`No ${kind} providers are configured (${orderVar})`);
     }
 
-    const provider = providers[0];
-    try {
-      const result = await attempt(provider, 0);
-      this.logger.log(
-        `[${kind}] Served by provider="${result.provider}" fallbackOccurred=false latencyMs=${result.latencyMs}`,
-      );
-      return result;
-    } catch (error) {
-      this.logger.error(
-        `[${kind}] Provider "${provider.name}" failed: ${(error as Error).message}`,
-      );
-      throw error;
+    let lastError: Error | null = null;
+
+    for (let index = 0; index < providers.length; index++) {
+      const provider = providers[index];
+      const maxRetries = 2;
+
+      for (let attemptNum = 0; attemptNum <= maxRetries; attemptNum++) {
+        try {
+          const result = await attempt(provider, index);
+          this.logger.log(
+            `[${kind}] Served by provider="${result.provider}" fallbackOccurred=${index > 0} latencyMs=${result.latencyMs}`,
+          );
+          return result;
+        } catch (error) {
+          lastError = error as Error;
+          const msg = lastError.message || '';
+          const is429 = /429|quota|rate\s*limit|too\s*many\s*requests/i.test(msg);
+          const isTransient = isTransientFailure(error);
+
+          if (!isTransient) {
+            // Non-transient errors (e.g. invalid arguments) fail immediately
+            this.logger.error(
+              `[${kind}] Non-transient error from provider "${provider.name}": ${msg}`,
+            );
+            throw error;
+          }
+
+          if (is429 && attemptNum < maxRetries) {
+            // Parse retry delay from message if possible or use exponential backoff
+            const delayMatch = msg.match(/retry in ([\d\.]+)s/i) || msg.match(/retryDelay":"(\d+)s/i);
+            const waitSeconds = delayMatch ? Math.min(parseFloat(delayMatch[1]), 5) : (attemptNum + 1) * 2;
+            this.logger.warn(
+              `[${kind}] Rate limit (429) hit on provider "${provider.name}". Retrying in ${waitSeconds}s (attempt ${attemptNum + 1}/${maxRetries})...`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+            continue;
+          }
+
+          this.logger.warn(
+            `[${kind}] Provider "${provider.name}" failed: ${msg}. Attempt ${attemptNum + 1}/${maxRetries + 1}.`,
+          );
+
+          if (attemptNum < maxRetries) {
+            await new Promise((resolve) => setTimeout(resolve, (attemptNum + 1) * 1000));
+          }
+        }
+      }
+
+      if (index < providers.length - 1) {
+        this.logger.warn(
+          `[${kind}] Falling back from provider "${provider.name}" to "${providers[index + 1].name}"...`,
+        );
+      }
     }
+
+    this.logger.error(
+      `[${kind}] All configured providers failed: ${lastError?.message}`,
+    );
+    throw lastError || new Error(`All ${kind} providers failed`);
   }
 }

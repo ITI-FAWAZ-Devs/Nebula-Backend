@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ChromaService } from '../../chroma/chroma.service';
+import { chunkIdForFilePath } from '../../ai-provider/embedding-space.util';
 import { RetrievalHit } from '../dto/retrieval-hit.dto';
 import {
   buildGraphSummary,
@@ -68,14 +69,14 @@ export class HitEnricherService {
 
     const collectionName = `repo-${repositoryId}`;
 
-    // Description chunks have deterministic ids (`${repositoryId}:${filePath}`)
+    // Description chunks have deterministic ids (generated via chunkIdForFilePath(filePath))
     // — one chunk per file — so a single get-by-ids call replaces per-path
     // similarity queries entirely (no embedding, no extra round-trips).
     const paths = filePaths.slice(0, 20);
     const requestedIds = new Map<string, string>(
       paths.map(
         (filePath) =>
-          [`${repositoryId}:${filePath}`, filePath] as [string, string],
+          [chunkIdForFilePath(filePath), filePath] as [string, string],
       ),
     );
 

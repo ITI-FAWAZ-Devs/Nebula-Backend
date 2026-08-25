@@ -109,6 +109,37 @@ export class GraphBuilderService {
 
     nodes.push(...modulesByDir.values());
 
+    // Calculate topological metrics (inDegree, outDegree, instability)
+    const inDegreeMap = new Map<string, number>();
+    const outDegreeMap = new Map<string, number>();
+
+    for (const rel of relationships) {
+      outDegreeMap.set(rel.startNodeId, (outDegreeMap.get(rel.startNodeId) || 0) + 1);
+      inDegreeMap.set(rel.endNodeId, (inDegreeMap.get(rel.endNodeId) || 0) + 1);
+    }
+
+    // Determine highest fan-in threshold for "isCore"
+    const inDegrees = Array.from(inDegreeMap.values()).sort((a, b) => b - a);
+    const coreThreshold = inDegrees.length > 5 ? inDegrees[Math.floor(inDegrees.length * 0.15)] : 2;
+
+    for (const node of nodes) {
+      const inDeg = inDegreeMap.get(node.id) || 0;
+      const outDeg = outDegreeMap.get(node.id) || 0;
+      const total = inDeg + outDeg;
+      const instability = total > 0 ? parseFloat((outDeg / total).toFixed(3)) : 0;
+      const isOrphan = total === 0 && !node.labels.includes('Repository');
+      const isCore = inDeg >= coreThreshold && inDeg > 1;
+
+      node.properties = {
+        ...node.properties,
+        inDegree: inDeg,
+        outDegree: outDeg,
+        instability,
+        isOrphan,
+        isCore,
+      };
+    }
+
     this.logger.log(
       `Built knowledge graph: ${nodes.length} nodes, ${relationships.length} relationships (${modulesByDir.size} modules)`,
     );

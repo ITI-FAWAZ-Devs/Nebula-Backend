@@ -119,10 +119,10 @@ describe('SubscriptionService', () => {
         'repo-1',
       );
 
-      expect(config.llmModel).toBe('gemini-3.1-flash-lite');
-      expect(config.llmProvider).toBe('gemini');
-      expect(config.embeddingProvider).toBe('gemini');
-      expect(config.embeddingModel).toBe('gemini-embedding-2');
+      expect(config.llmModel).toBe(DEFAULT_SUBSCRIPTION_TIERS.FREE.llmModel);
+      expect(config.llmProvider).toBe(DEFAULT_SUBSCRIPTION_TIERS.FREE.llmProvider);
+      expect(config.embeddingProvider).toBe(DEFAULT_SUBSCRIPTION_TIERS.FREE.embeddingProvider);
+      expect(config.embeddingModel).toBe(DEFAULT_SUBSCRIPTION_TIERS.FREE.embeddingModel);
       expect(prisma.$transaction).toHaveBeenCalled();
     });
 

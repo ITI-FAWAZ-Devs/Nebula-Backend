@@ -209,4 +209,65 @@ describe('Neo4jService', () => {
       expect(mockTx.rollback).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ── Graph Analytics ──────────────────────────────────────────────────────────
+
+  describe('Graph Analytics Queries', () => {
+    const repositoryId = 'repo-test';
+
+    it('getCircularDependencies runs parameterized Cypher and formats output', async () => {
+      mockSession.run.mockResolvedValueOnce({
+        records: [
+          {
+            get: (field: string) =>
+              field === 'cycle'
+                ? ['src/a.ts', 'src/b.ts', 'src/a.ts']
+                : neo4j.int(2),
+          },
+        ],
+      });
+
+      const res = await service.getCircularDependencies(repositoryId, 5);
+      expect(res).toHaveLength(1);
+      expect(res[0].cycleLength).toBe(2);
+      expect(mockSession.close).toHaveBeenCalled();
+    });
+
+    it('getImpactAnalysis queries transitive upstream dependents', async () => {
+      mockSession.run.mockResolvedValueOnce({
+        records: [
+          {
+            get: (field: string) =>
+              field === 'dependentFile'
+                ? 'src/controller.ts'
+                : field === 'depth'
+                  ? neo4j.int(1)
+                  : ['IMPORTS'],
+          },
+        ],
+      });
+
+      const res = await service.getImpactAnalysis(repositoryId, 'src/service.ts');
+      expect(res).toHaveLength(1);
+      expect(res[0].dependentFile).toBe('src/controller.ts');
+      expect(res[0].depth).toBe(1);
+    });
+
+    it('getArchitectureGraph returns nodes and edges', async () => {
+      mockSession.run.mockResolvedValueOnce({
+        records: [
+          {
+            get: (field: string) =>
+              field === 'nodes'
+                ? [{ id: 'n1', name: 'File1', labels: ['File'], properties: {} }]
+                : [{ id: 'e1', source: 'n1', target: 'n2', type: 'IMPORTS', properties: {} }],
+          },
+        ],
+      });
+
+      const res = await service.getArchitectureGraph(repositoryId);
+      expect(res.nodes).toHaveLength(1);
+      expect(res.edges).toHaveLength(1);
+    });
+  });
 });

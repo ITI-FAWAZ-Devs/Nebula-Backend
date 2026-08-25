@@ -15,6 +15,7 @@ describe('ArchitectureDocEmbedderService', () => {
   beforeEach(async () => {
     const mockAiProvider = {
       embedString: jest.fn(),
+      embedMany: jest.fn(),
     };
 
     const mockChromaService = {
@@ -50,14 +51,14 @@ describe('ArchitectureDocEmbedderService', () => {
 
     await service.embedDocument(payload);
 
-    expect(aiProvider.embedString).not.toHaveBeenCalled();
+    expect(aiProvider.embedMany).not.toHaveBeenCalled();
     expect(chromaService.upsertChunks).not.toHaveBeenCalled();
   });
 
   it('should generate embeddings and upsert sections into ChromaDB with proper structure', async () => {
     const fakeEmbedding = [0.1, 0.2, 0.3];
-    aiProvider.embedString.mockResolvedValue({
-      embedding: fakeEmbedding,
+    aiProvider.embedMany.mockResolvedValue({
+      embeddings: [fakeEmbedding],
       model: 'test-model',
       dimensions: 3,
       provider: 'gemini',
@@ -83,8 +84,8 @@ describe('ArchitectureDocEmbedderService', () => {
 
     await service.embedDocument(payload);
 
-    expect(aiProvider.embedString).toHaveBeenCalledWith(
-      '# System Overview\n\nThis is the system overview content.',
+    expect(aiProvider.embedMany).toHaveBeenCalledWith(
+      ['# System Overview\n\nThis is the system overview content.'],
       'search_document',
     );
 

@@ -24,6 +24,7 @@ import { VoiceModule } from './voice/voice.module';
 import { McpModule } from './mcp/mcp.module';
 import { AuthorizationModule } from './authorization/authorization.module';
 import { AdminModule } from './admin/admin.module';
+import { GraphModule } from './graph/graph.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { AppController } from './app.controller';
@@ -68,6 +69,7 @@ import { AppService } from './app.service';
     McpModule,
     AuthorizationModule,
     AdminModule,
+    GraphModule,
   ],
   controllers: [AppController],
   providers: [

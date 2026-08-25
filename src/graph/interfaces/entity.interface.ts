@@ -6,7 +6,12 @@ export type EntityType =
   | 'Class'
   | 'Interface'
   | 'Method'
-  | 'Function';
+  | 'Function'
+  | 'Enum'
+  | 'TypeAlias'
+  | 'Endpoint'
+  | 'Service'
+  | 'Component';
 
 export interface Entity {
   id: string;

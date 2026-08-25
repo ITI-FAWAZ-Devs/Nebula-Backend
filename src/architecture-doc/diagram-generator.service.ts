@@ -116,45 +116,47 @@ export class DiagramGeneratorService {
     const modules = new Set<string>();
     const seenEdges = new Set<string>();
 
-    const addNode = (label: string) => {
-      modules.add(label);
-      lines.push(`    ${this.nodeId(label)}["${this.escapeLabel(label)}"]`);
-    };
-
     if (relationships.length > 0) {
+      // Connect files / modules based on relationships
       for (const rel of relationships) {
-        const from = this.moduleLabelFor(rel.fromFilePath, clusters);
-        const to = this.moduleLabelFor(rel.toFilePath, clusters);
-        const edgeKey = `${from}->${to}`;
-        if (seenEdges.has(edgeKey)) {
+        if (!rel.fromFilePath || !rel.toFilePath || rel.fromFilePath === rel.toFilePath) {
           continue;
         }
-        seenEdges.add(edgeKey);
-        modules.add(from);
-        modules.add(to);
-        lines.push(
-          `    ${this.nodeId(from)}["${this.escapeLabel(from)}"] --> ${this.nodeId(to)}["${this.escapeLabel(to)}"]`,
-        );
-      }
-    } else if (clusters.length > 0) {
-      for (const cluster of clusters) {
-        addNode(cluster.name);
-      }
-    } else {
-      const moduleSet = new Set<string>();
-      for (const file of files) {
-        const label = this.moduleLabelFor(file.filePath, clusters);
-        if (label) {
-          moduleSet.add(label);
+
+        const fromLabel = this.moduleLabelFor(rel.fromFilePath, clusters);
+        const toLabel = this.moduleLabelFor(rel.toFilePath, clusters);
+        const fromBase = rel.fromFilePath.split('/').pop() || rel.fromFilePath;
+        const toBase = rel.toFilePath.split('/').pop() || rel.toFilePath;
+
+        modules.add(fromLabel);
+        modules.add(toLabel);
+
+        const edgeKey = `${rel.fromFilePath}->${rel.toFilePath}`;
+        if (!seenEdges.has(edgeKey)) {
+          seenEdges.add(edgeKey);
+          const relType = rel.type ? `|${rel.type.toLowerCase()}|` : '';
+          lines.push(
+            `    ${this.nodeId(rel.fromFilePath)}["${this.escapeLabel(fromBase)}"] -->${relType} ${this.nodeId(rel.toFilePath)}["${this.escapeLabel(toBase)}"]`,
+          );
         }
-      }
-      for (const module of moduleSet) {
-        addNode(module);
       }
     }
 
-    if (modules.size === 0) {
-      return null;
+    // If no relationships were rendered, connect modules or files from an App Root
+    if (seenEdges.size === 0) {
+      const moduleList = clusters.length > 0
+        ? clusters.map((c) => c.name)
+        : Array.from(new Set(files.map((f) => this.moduleLabelFor(f.filePath, clusters)))).filter(Boolean);
+
+      if (moduleList.length === 0) {
+        return null;
+      }
+
+      lines.push(`    root["Application Core"]`);
+      for (const mod of moduleList) {
+        modules.add(mod);
+        lines.push(`    root --> ${this.nodeId(mod)}["${this.escapeLabel(mod)}"]`);
+      }
     }
 
     return {

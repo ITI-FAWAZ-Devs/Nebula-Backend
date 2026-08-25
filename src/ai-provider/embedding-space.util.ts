@@ -55,3 +55,20 @@ export function embeddingSpaceMetadata(
     embeddingDimensions: batch.dimensions,
   };
 }
+
+/**
+ * ChromaDB Cloud enforces a strict 128-byte quota limit on record IDs.
+ * Generates a deterministic chunk ID for a file path that is guaranteed to stay <= 128 bytes.
+ */
+export function chunkIdForFilePath(filePath: string): string {
+  if (Buffer.byteLength(filePath, 'utf8') <= 120) {
+    return filePath;
+  }
+  // For unusually deep file paths (> 120 bytes), truncate and append a hash to prevent ID quota violations.
+  let hash = 0;
+  for (let i = 0; i < filePath.length; i++) {
+    hash = (hash * 31 + filePath.charCodeAt(i)) >>> 0;
+  }
+  const hexHash = hash.toString(16).padStart(8, '0');
+  return `${filePath.slice(0, 100)}_${hexHash}`;
+}

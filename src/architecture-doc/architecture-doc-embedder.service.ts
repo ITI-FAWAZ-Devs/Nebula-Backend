@@ -16,7 +16,7 @@ export class ArchitectureDocEmbedderService {
 
   /**
    * Embeds sections of an Architecture Specification Document into ChromaDB
-   * via the shared AiProvider embedding chain.
+   * via a single batched AiProvider embedding call.
    *
    * @param payload Document payload containing docId, version, commitSha, and sections.
    */
@@ -37,48 +37,38 @@ export class ArchitectureDocEmbedderService {
         ? new Date(generatedAt).toISOString()
         : new Date().toISOString();
 
-      const chunksToUpsert: Array<{
-        id: string;
-        document: string;
-        metadata: Record<string, any>;
-        embedding: number[];
-      }> = [];
+      // 1. Prepare texts to embed in a single batch
+      const textsToEmbed = sections.map(
+        (section) => `# ${section.title}\n\n${section.contentMd}`,
+      );
 
-      for (const section of sections) {
-        // 1. Construct text snippet combining title and markdown content
-        const textToEmbed = `# ${section.title}\n\n${section.contentMd}`;
-        const recordId = `${docId}_${section.key}`;
+      this.logger.log(
+        `[Doc ${docId}] Generating batched embeddings for ${sections.length} section(s)...`,
+      );
+      const batchResult = await this.aiProvider.embedMany(
+        textsToEmbed,
+        'search_document',
+      );
 
-        // 2. Generate embedding vector via the AI provider chain
-        this.logger.log(
-          `[Doc ${docId}] Generating embedding for section '${section.key}'...`,
-        );
-        const embedResult = await this.aiProvider.embedString(
-          textToEmbed,
-          'search_document',
-        );
-        const embedding = embedResult.embedding;
+      // 2. Construct structured metadata & chunks for ChromaDB
+      const chunksToUpsert = sections.map((section, index) => ({
+        id: `${docId}_${section.key}`,
+        document: textsToEmbed[index],
+        metadata: {
+          docId,
+          version: Number(version),
+          commitSha: commitSha ?? '',
+          sectionKey: section.key,
+          sectionTitle: section.title,
+          sourceFiles: Array.isArray(section.sourceFiles)
+            ? section.sourceFiles.join(', ')
+            : String(section.sourceFiles || ''),
+          generatedAt: generatedAtIso,
+        },
+        embedding: batchResult.embeddings[index],
+      }));
 
-        // 3. Construct structured metadata & chunk
-        chunksToUpsert.push({
-          id: recordId,
-          document: textToEmbed,
-          metadata: {
-            docId,
-            version: Number(version),
-            commitSha: commitSha ?? '',
-            sectionKey: section.key,
-            sectionTitle: section.title,
-            sourceFiles: Array.isArray(section.sourceFiles)
-              ? section.sourceFiles.join(', ')
-              : String(section.sourceFiles || ''),
-            generatedAt: generatedAtIso,
-          },
-          embedding,
-        });
-      }
-
-      // 4. Store/Upsert batch into ChromaDB
+      // 3. Store/Upsert batch into ChromaDB
       this.logger.log(
         `[Doc ${docId}] Upserting ${chunksToUpsert.length} vectors to ChromaDB collection '${ARCHITECTURE_DOCS_COLLECTION}'...`,
       );

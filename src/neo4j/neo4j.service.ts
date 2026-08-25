@@ -61,6 +61,11 @@ const VALID_LABELS = new Set<string>([
   'Interface',
   'Method',
   'Function',
+  'Enum',
+  'TypeAlias',
+  'Endpoint',
+  'Service',
+  'Component',
 ] satisfies EntityType[]);
 
 /** Allowlisted relationship types sourced from RelationshipType */
@@ -73,6 +78,11 @@ const VALID_REL_TYPES = new Set<string>([
   'IMPLEMENTS',
   'DEPENDS_ON',
   'HAS_METHOD',
+  'EXPORTS',
+  'TYPE_REFERENCES',
+  'INJECTS',
+  'ROUTES_TO',
+  'USES_HOOK',
 ] satisfies RelationshipType[]);
 
 function toGraphToolNode(raw: Record<string, unknown>): GraphToolNode {
@@ -647,6 +657,325 @@ export class Neo4jService implements OnModuleInit, OnModuleDestroy {
         },
       );
       return result.records.map((r) => toGraphToolNode(r.get('node')));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * getCircularDependencies — detects circular IMPORTS/DEPENDS_ON chains in the repository graph.
+   */
+  async getCircularDependencies(
+    repositoryId: string,
+    maxDepth = 8,
+  ): Promise<Array<{ cycle: string[]; cycleLength: number }>> {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH path = (a:File {repositoryId: $repositoryId})-[:IMPORTS*2..${Math.min(maxDepth, 10)}]->(a)
+        WITH [n IN nodes(path) | coalesce(n.path, n.sourceFile, n.name)] AS cyclePaths,
+             length(path) AS len
+        RETURN DISTINCT cyclePaths AS cycle, len AS cycleLength
+        LIMIT 25
+        `,
+        { repositoryId },
+      );
+
+      return result.records.map((r) => {
+        const rawLen = r.get('cycleLength');
+        const cycleLength =
+          rawLen instanceof Integer
+            ? rawLen.toNumber()
+            : typeof rawLen === 'number'
+              ? rawLen
+              : 0;
+        return {
+          cycle: (r.get('cycle') as string[]) || [],
+          cycleLength,
+        };
+      });
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * getImpactAnalysis — blast radius analysis: finds all upstream files that transitively depend on the target file.
+   */
+  async getImpactAnalysis(
+    repositoryId: string,
+    filePath: string,
+    maxDepth = 4,
+  ): Promise<
+    Array<{
+      dependentFile: string;
+      depth: number;
+      relationshipTypes: string[];
+    }>
+  > {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH (target:File {repositoryId: $repositoryId})
+        WHERE target.path = $filePath OR target.sourceFile = $filePath OR target.name = $filePath
+        MATCH path = (dependent:File {repositoryId: $repositoryId})-[:IMPORTS|CALLS|DEPENDS_ON*1..${Math.min(maxDepth, 6)}]->(target)
+        WHERE dependent <> target
+        WITH dependent,
+             min(length(path)) AS minDepth,
+             [rel IN relationships(path) | type(rel)] AS relTypes
+        RETURN DISTINCT
+          coalesce(dependent.path, dependent.sourceFile, dependent.name) AS dependentFile,
+          minDepth AS depth,
+          relTypes AS relationshipTypes
+        ORDER BY depth ASC
+        LIMIT 50
+        `,
+        { repositoryId, filePath },
+      );
+
+      return result.records.map((r) => {
+        const rawDepth = r.get('depth');
+        const depth =
+          rawDepth instanceof Integer
+            ? rawDepth.toNumber()
+            : typeof rawDepth === 'number'
+              ? rawDepth
+              : 1;
+        return {
+          dependentFile: (r.get('dependentFile') as string) || '',
+          depth,
+          relationshipTypes: (r.get('relationshipTypes') as string[]) || [],
+        };
+      });
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * getGraphOverview — returns repository-wide graph statistics, top hub nodes, and distribution.
+   */
+  async getGraphOverview(repositoryId: string): Promise<{
+    totalNodes: number;
+    totalRelationships: number;
+    labelsCount: Record<string, number>;
+    topHubs: Array<{
+      id: string;
+      name: string;
+      filePath: string | null;
+      inDegree: number;
+      outDegree: number;
+    }>;
+  }> {
+    const session = this.getSession();
+    try {
+      const statsResult = await session.run(
+        `
+        MATCH (n {repositoryId: $repositoryId})
+        OPTIONAL MATCH (n)-[r {repositoryId: $repositoryId}]->()
+        RETURN count(DISTINCT n) AS nodeCount, count(r) AS relCount
+        `,
+        { repositoryId },
+      );
+
+      const nodeCountRaw = statsResult.records[0]?.get('nodeCount');
+      const relCountRaw = statsResult.records[0]?.get('relCount');
+      const totalNodes =
+        nodeCountRaw instanceof Integer
+          ? nodeCountRaw.toNumber()
+          : typeof nodeCountRaw === 'number'
+            ? nodeCountRaw
+            : 0;
+      const totalRelationships =
+        relCountRaw instanceof Integer
+          ? relCountRaw.toNumber()
+          : typeof relCountRaw === 'number'
+            ? relCountRaw
+            : 0;
+
+      const hubsResult = await session.run(
+        `
+        MATCH (n {repositoryId: $repositoryId})
+        WHERE n:File OR n:Class OR n:Module
+        OPTIONAL MATCH (inNode)-[inRel]->(n)
+        WHERE inRel.repositoryId = $repositoryId
+        OPTIONAL MATCH (n)-[outRel]->(outNode)
+        WHERE outRel.repositoryId = $repositoryId
+        WITH n, count(DISTINCT inRel) AS inDeg, count(DISTINCT outRel) AS outDeg
+        ORDER BY inDeg DESC
+        LIMIT 10
+        RETURN
+          n.id AS id,
+          n.name AS name,
+          coalesce(n.path, n.sourceFile, null) AS filePath,
+          inDeg AS inDegree,
+          outDeg AS outDegree
+        `,
+        { repositoryId },
+      );
+
+      const topHubs = hubsResult.records.map((r) => {
+        const inDegRaw = r.get('inDegree');
+        const outDegRaw = r.get('outDegree');
+        return {
+          id: (r.get('id') as string) || '',
+          name: (r.get('name') as string) || '',
+          filePath: (r.get('filePath') as string) || null,
+          inDegree:
+            inDegRaw instanceof Integer
+              ? inDegRaw.toNumber()
+              : typeof inDegRaw === 'number'
+                ? inDegRaw
+                : 0,
+          outDegree:
+            outDegRaw instanceof Integer
+              ? outDegRaw.toNumber()
+              : typeof outDegRaw === 'number'
+                ? outDegRaw
+                : 0,
+        };
+      });
+
+      return {
+        totalNodes,
+        totalRelationships,
+        labelsCount: {},
+        topHubs,
+      };
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * getArchitectureGraph — fetches nodes and edges for frontend interactive visualization.
+   */
+  async getArchitectureGraph(
+    repositoryId: string,
+    options?: {
+      moduleId?: string;
+      maxNodes?: number;
+    },
+  ): Promise<{
+    nodes: Array<{
+      id: string;
+      name: string;
+      labels: string[];
+      filePath: string | null;
+      properties: Record<string, unknown>;
+    }>;
+    edges: Array<{
+      id: string;
+      source: string;
+      target: string;
+      type: string;
+      properties: Record<string, unknown>;
+    }>;
+  }> {
+    const session = this.getSession();
+    const limit = options?.maxNodes ?? 250;
+    try {
+      const result = await session.run(
+        `
+        MATCH (n {repositoryId: $repositoryId})
+        WHERE ($moduleId IS NULL OR n.path STARTS WITH $moduleId OR n.sourceFile STARTS WITH $moduleId)
+        WITH n LIMIT $limit
+        OPTIONAL MATCH (n)-[r]->(m {repositoryId: $repositoryId})
+        RETURN
+          collect(DISTINCT {
+            id: n.id,
+            name: n.name,
+            labels: labels(n),
+            filePath: coalesce(n.path, n.sourceFile, null),
+            properties: properties(n)
+          }) AS nodes,
+          collect(DISTINCT CASE WHEN r IS NOT NULL THEN {
+            id: coalesce(r.id, id(r)),
+            source: startNode(r).id,
+            target: endNode(r).id,
+            type: type(r),
+            properties: properties(r)
+          } ELSE null END) AS edges
+        `,
+        {
+          repositoryId,
+          moduleId: options?.moduleId ?? null,
+          limit: neo4j.int(limit),
+        },
+      );
+
+      if (result.records.length === 0) {
+        return { nodes: [], edges: [] };
+      }
+
+      const rec = result.records[0];
+      const rawNodes = (rec.get('nodes') as Array<Record<string, unknown>>) || [];
+      const rawEdges = (rec.get('edges') as Array<Record<string, unknown>>) || [];
+
+      const nodes = rawNodes
+        .filter((n) => n && n.id)
+        .map((n) => ({
+          id: n.id as string,
+          name: (n.name as string) || (n.id as string),
+          labels: (n.labels as string[]) || [],
+          filePath: (n.filePath as string) || null,
+          properties: (n.properties as Record<string, unknown>) || {},
+        }));
+
+      const edges = rawEdges
+        .filter((e) => e && e.source && e.target)
+        .map((e) => ({
+          id: String(e.id),
+          source: e.source as string,
+          target: e.target as string,
+          type: e.type as string,
+          properties: (e.properties as Record<string, unknown>) || {},
+        }));
+
+      return { nodes, edges };
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * getDeadCode — finds orphan/dead code nodes with 0 incoming references.
+   */
+  async getDeadCode(repositoryId: string): Promise<
+    Array<{
+      id: string;
+      name: string;
+      filePath: string | null;
+      label: string;
+    }>
+  > {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH (n {repositoryId: $repositoryId})
+        WHERE (n:Function OR n:Class OR n:Method)
+          AND NOT (()-[:CALLS|IMPORTS|EXTENDS|IMPLEMENTS]->(n))
+          AND NOT n.name CONTAINS 'test'
+          AND NOT n.name CONTAINS 'spec'
+        RETURN
+          n.id AS id,
+          n.name AS name,
+          coalesce(n.path, n.sourceFile, null) AS filePath,
+          head(labels(n)) AS label
+        LIMIT 30
+        `,
+        { repositoryId },
+      );
+
+      return result.records.map((r) => ({
+        id: (r.get('id') as string) || '',
+        name: (r.get('name') as string) || '',
+        filePath: (r.get('filePath') as string) || null,
+        label: (r.get('label') as string) || 'Function',
+      }));
     } finally {
       await session.close();
     }
