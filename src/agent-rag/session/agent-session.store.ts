@@ -68,6 +68,23 @@ export class AgentSessionStore {
     return record;
   }
 
+  async setThread(
+    sessionId: string,
+    threadId: string,
+  ): Promise<AgentSessionRecord | null> {
+    const record = await this.get(sessionId);
+    if (!record) return null;
+
+    record.threadId = threadId;
+    record.updatedAt = new Date().toISOString();
+    await this.redis.set(
+      this.key(sessionId),
+      JSON.stringify(record),
+      SESSION_TTL_SECONDS,
+    );
+    return record;
+  }
+
   async appendTurn(
     sessionId: string,
     turn: AgentSessionTurn,

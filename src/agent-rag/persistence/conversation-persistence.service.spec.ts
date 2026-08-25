@@ -63,6 +63,52 @@ describe('ConversationPersistenceService', () => {
     });
   });
 
+  it('reuses the provided thread instead of creating a new one', async () => {
+    prismaMock.conversationThread.findFirst.mockResolvedValue({
+      id: 'thread-9',
+      userId: 'user-1',
+      repositoryId: 'repo-1',
+    });
+
+    const result = await service.persistTurn({
+      userId: 'user-1',
+      repositoryId: 'repo-1',
+      threadId: 'thread-9',
+      question: 'Second question?',
+      answer: 'Second answer.',
+    });
+
+    expect(result.threadId).toBe('thread-9');
+    expect(prismaMock.conversationThread.create).not.toHaveBeenCalled();
+    expect(prismaMock.conversationMessage.createMany).toHaveBeenCalledWith({
+      data: [
+        { threadId: 'thread-9', role: 'user', content: 'Second question?' },
+        {
+          threadId: 'thread-9',
+          role: 'assistant',
+          content: 'Second answer.',
+          citations: undefined,
+        },
+      ],
+    });
+  });
+
+  it('falls back to a new thread when the provided threadId is not owned', async () => {
+    prismaMock.conversationThread.findFirst.mockResolvedValue(null);
+    prismaMock.conversationThread.create.mockResolvedValue({ id: 'thread-2' });
+
+    const result = await service.persistTurn({
+      userId: 'user-1',
+      repositoryId: 'repo-1',
+      threadId: 'someone-elses-thread',
+      question: 'Q',
+      answer: 'A',
+    });
+
+    expect(result.threadId).toBe('thread-2');
+    expect(prismaMock.conversationThread.create).toHaveBeenCalled();
+  });
+
   it('gets thread details with messages', async () => {
     prismaMock.conversationThread.findFirst.mockResolvedValue({
       id: 'thread-1',

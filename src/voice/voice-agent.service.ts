@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentLoopService } from '../agent-rag/orchestration/agent-loop.service';
 import { AgentSessionStore } from '../agent-rag/session/agent-session.store';
+import { ConversationPersistenceService } from '../agent-rag/persistence/conversation-persistence.service';
 import { AgentCitation } from '../agent-rag/dto/retrieval-hit.dto';
 import { WhisperSTTProvider } from './providers/whisper-stt.provider';
 import { PiperTTSProvider } from './providers/piper-tts.provider';
@@ -35,6 +36,8 @@ export interface VoiceSessionCallbacks {
   }): void;
   onTtsAudio(chunk: Buffer): void;
   onError(message: string): void;
+  /** Fired after a turn is durably saved to the conversation thread */
+  onPersisted(payload: { agentSessionId: string; threadId: string }): void;
 }
 
 /** One voice session lives for one WebSocket connection */
@@ -43,6 +46,8 @@ export class VoiceSession {
 
   state: VoiceUiState = 'idle';
   agentSessionId: string | null = null;
+  /** Conversation thread this session's turns are appended to */
+  threadId: string | null = null;
 
   stt: WhisperSTTProvider;
   tts: PiperTTSProvider;
@@ -56,6 +61,7 @@ export class VoiceSession {
     public readonly repositoryId: string,
     private readonly agentLoop: AgentLoopService,
     private readonly sessions: AgentSessionStore,
+    private readonly persistence: ConversationPersistenceService,
     private readonly callbacks: VoiceSessionCallbacks,
     whisperBin: string,
     whisperModel: string,
@@ -125,12 +131,14 @@ export class VoiceSession {
     this.agentAbort = abort;
 
     try {
-      // Resolve recent context from existing session turns
+      // Resolve recent context + in-session conversation history
       let recentNodeIds: string[] = [];
+      let conversationHistory: Array<{ q: string; a: string }> = [];
       if (this.agentSessionId) {
         const session = await this.sessions.get(this.agentSessionId);
         if (session) {
           recentNodeIds = this.sessions.recentCitedNodeIds(session);
+          conversationHistory = session.turns.map((t) => ({ q: t.q, a: t.a }));
         }
       }
 
@@ -143,6 +151,7 @@ export class VoiceSession {
         repositoryId: this.repositoryId,
         question,
         recentNodeIds,
+        conversationHistory,
         responseStyle: 'voice',
       });
 
@@ -167,12 +176,38 @@ export class VoiceSession {
 
       if (abort.signal.aborted) return;
 
-      // Persist turn
-      if (this.agentSessionId && finalAnswer) {
-        await this.sessions.appendTurn(this.agentSessionId, {
-          q: question,
-          a: finalAnswer,
-          citedNodeIds: finalCitedNodeIds,
+      // Persist turn: in-memory session window + durable conversation thread.
+      if (finalAnswer) {
+        if (this.agentSessionId) {
+          await this.sessions.appendTurn(this.agentSessionId, {
+            q: question,
+            a: finalAnswer,
+            citedNodeIds: finalCitedNodeIds,
+          });
+        }
+
+        // Reuse the bound thread so the whole voice conversation stays in one
+        // history; only the first turn creates a new thread (same as chat).
+        const { threadId } = await this.persistence.persistTurn({
+          userId: this.userId,
+          repositoryId: this.repositoryId,
+          threadId: this.threadId ?? undefined,
+          question,
+          answer: finalAnswer,
+          citations: finalCitations.length ? finalCitations : null,
+        });
+
+        if (threadId !== this.threadId) {
+          this.threadId = threadId;
+          if (this.agentSessionId) {
+            // Keep the agent session pointing at the same thread
+            await this.sessions.setThread(this.agentSessionId, threadId);
+          }
+        }
+
+        this.callbacks.onPersisted({
+          agentSessionId: this.agentSessionId ?? '',
+          threadId,
         });
       }
 
@@ -216,6 +251,7 @@ export class VoiceAgentService {
     private readonly prisma: PrismaService,
     private readonly agentLoop: AgentLoopService,
     private readonly sessionStore: AgentSessionStore,
+    private readonly persistence: ConversationPersistenceService,
     private readonly config: ConfigService,
   ) {}
 
@@ -224,6 +260,7 @@ export class VoiceAgentService {
     userId: string,
     repositoryId: string,
     callbacks: VoiceSessionCallbacks,
+    options?: { threadId?: string },
   ): Promise<VoiceSession> {
     // Validate repo ownership
     const repo = await this.prisma.repository.findUnique({
@@ -253,6 +290,7 @@ export class VoiceAgentService {
       repositoryId,
       this.agentLoop,
       this.sessionStore,
+      this.persistence,
       callbacks,
       this.config.get<string>('voice.whisperBin')!,
       this.config.get<string>('voice.whisperModel')!,
@@ -261,6 +299,8 @@ export class VoiceAgentService {
       this.config.get<string>('voice.piperModel')!,
     );
     session.agentSessionId = agentSession.sessionId;
+    // Optionally continue an existing conversation thread from voice
+    session.threadId = options?.threadId ?? null;
 
     this.sessions.set(socketId, session);
     return session;
