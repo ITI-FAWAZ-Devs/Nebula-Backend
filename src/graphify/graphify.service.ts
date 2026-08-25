@@ -11,11 +11,16 @@ import {
   GraphifyEdge,
 } from './interfaces/graphify-result.interface';
 
+import { AstExtractorService } from './ast-extractor.service';
+
 @Injectable()
 export class GraphifyService {
   private readonly logger = new Logger(GraphifyService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly astExtractor: AstExtractorService,
+  ) {}
 
   async analyze(
     project: ProjectMetadata,
@@ -45,6 +50,8 @@ export class GraphifyService {
         cwd: projectPath,
         reject: true,
       });
+
+      return await this.readResult(outputFile);
     } catch (error) {
       const err = error as Error & {
         stderr?: string;
@@ -52,21 +59,32 @@ export class GraphifyService {
         failed?: boolean;
         timedOut?: boolean;
       };
-      // Fail loudly: an empty graph would silently produce a Repository-only
-      // knowledge graph in Neo4j (no nodes/edges), which is never useful.
-      this.logger.error(
-        `Graphify CLI execution failed (bin='${bin}'): ${err.message}\nstderr: ${err.stderr || '(none)'}`,
-      );
-      throw new Error(
-        `Graphify extraction failed: ${
-          err.timedOut
-            ? `timed out after ${timeoutMs}ms`
-            : `'${bin}' could not be executed. Ensure GRAPHIFY_BIN points to the installed CLI and it is on PATH.`
-        } ${err.stderr ? `| stderr: ${err.stderr.trim()}` : ''}`,
-      );
-    }
 
-    return this.readResult(outputFile);
+      this.logger.warn(
+        `Graphify CLI execution failed (bin='${bin}'): ${err.message}. Falling back to in-process AST extraction.`,
+      );
+
+      // In-process fallback parser
+      const fallbackResult = await this.astExtractor.extract(projectPath);
+      if (!fallbackResult.nodes?.length) {
+        throw new Error(
+          `Graphify extraction and in-process fallback both failed to find code entities in ${projectPath}`,
+        );
+      }
+
+      // Ensure output directory and write fallback graph.json for pipeline checkpointing
+      try {
+        await fs.mkdir(path.dirname(outputFile), { recursive: true });
+        await fs.writeFile(outputFile, JSON.stringify(fallbackResult, null, 2), 'utf-8');
+        fallbackResult.outputPath = outputFile;
+      } catch (writeErr) {
+        this.logger.warn(
+          `Could not persist fallback graph.json: ${(writeErr as Error).message}`,
+        );
+      }
+
+      return fallbackResult;
+    }
   }
 
   private buildArgs(

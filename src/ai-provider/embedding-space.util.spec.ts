@@ -1,6 +1,7 @@
 import {
   collectionNameFor,
   embeddingSpaceMetadata,
+  chunkIdForFilePath,
 } from './embedding-space.util';
 
 describe('collectionNameFor', () => {
@@ -70,5 +71,19 @@ describe('embeddingSpaceMetadata', () => {
       embeddingModel: 'nvidia/llama-nemotron-embed-vl-1b-v2:free',
       embeddingDimensions: 2048,
     });
+  });
+});
+
+describe('chunkIdForFilePath', () => {
+  it('should return the original file path when <= 120 bytes', () => {
+    const path = 'src/features/auth/auth.service.ts';
+    expect(chunkIdForFilePath(path)).toBe(path);
+  });
+
+  it('should truncate and append hash when path > 120 bytes to stay <= 128 bytes', () => {
+    const longPath = 'src/features/administrative-workflows/approvals/controllers/internal-review-board-digital-system-submission-with-a-very-long-file-name-that-exceeds-the-quota.controller.ts';
+    const id = chunkIdForFilePath(longPath);
+    expect(Buffer.byteLength(id, 'utf8')).toBeLessThanOrEqual(128);
+    expect(id.startsWith(longPath.slice(0, 100))).toBe(true);
   });
 });

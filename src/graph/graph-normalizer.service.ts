@@ -38,13 +38,19 @@ export class GraphNormalizerService {
       seenEntityIds.add(id);
 
       const type = this.inferEntityType(node, methodTargetIds);
+      const rawPath = node.path || node.source_file;
+      const normalizedPath = rawPath ? rawPath.replace(/\\/g, '/') : undefined;
+      const normalizedSourceFile = node.source_file
+        ? node.source_file.replace(/\\/g, '/')
+        : undefined;
+
       entities.push({
         id,
         type,
         name: this.cleanName(node.name || node.label || id),
         properties: {
-          path: node.path || node.source_file,
-          sourceFile: node.source_file,
+          path: normalizedPath,
+          sourceFile: normalizedSourceFile,
           sourceLocation: node.source_location,
           fileType: node.file_type,
           ...node.metadata,
@@ -61,6 +67,10 @@ export class GraphNormalizerService {
       if (!type) continue;
       if (!edge.source || !edge.target) continue;
 
+      const normalizedSourceFile = edge.source_file
+        ? edge.source_file.replace(/\\/g, '/')
+        : undefined;
+
       relationships.push({
         id: edge.id || uuidv4(),
         type,
@@ -68,7 +78,7 @@ export class GraphNormalizerService {
         targetId: edge.target,
         properties: {
           confidence: edge.confidence,
-          sourceFile: edge.source_file,
+          sourceFile: normalizedSourceFile,
           ...edge.properties,
         },
       });
@@ -91,13 +101,13 @@ export class GraphNormalizerService {
     }
 
     const label = (node.label || node.name || '').trim();
-    const sourceFile = node.source_file || '';
+    const sourceFile = (node.source_file || '').replace(/\\/g, '/');
 
     // File nodes: label looks like a filename / matches source_file basename
     if (
       FILE_EXTENSION.test(label) ||
       (sourceFile &&
-        (label === sourceFile || label === sourceFile.split(/[/\\]/).pop()))
+        (label === sourceFile || label === sourceFile.split('/').pop()))
     ) {
       return 'File';
     }
@@ -106,15 +116,45 @@ export class GraphNormalizerService {
       return 'Method';
     }
 
-    if (/\(\)$/.test(label) || /^\w+\(.*\)$/.test(label)) {
+    if (/\(\)$/.test(label) || /^\w+\(.*\)$/.test(label) || /^use[A-Z]/.test(label)) {
       return 'Function';
     }
 
     if (
+      /enum/i.test(label) ||
+      (label.endsWith('Enum') && /^[A-Z]/.test(label))
+    ) {
+      return 'Enum';
+    }
+
+    if (
       /interface/i.test(label) ||
-      (label.startsWith('I') && /^I[A-Z]/.test(label))
+      (label.startsWith('I') && /^I[A-Z]/.test(label) && !sourceFile.endsWith('tsx'))
     ) {
       return 'Interface';
+    }
+
+    if (
+      /type/i.test(label) ||
+      (label.endsWith('Type') && /^[A-Z]/.test(label)) ||
+      label.endsWith('Props')
+    ) {
+      return 'TypeAlias';
+    }
+
+    if (
+      (sourceFile.endsWith('.tsx') || sourceFile.endsWith('.jsx')) &&
+      /^[A-Z][A-Za-z0-9_]*$/.test(label)
+    ) {
+      return 'Component';
+    }
+
+    if (
+      label.endsWith('Service') ||
+      label.endsWith('Provider') ||
+      label.endsWith('Repository')
+    ) {
+      return 'Service';
     }
 
     // PascalCase symbols default to Class
@@ -148,6 +188,14 @@ export class GraphNormalizerService {
       function: 'Function',
       fn: 'Function',
       func: 'Function',
+      enum: 'Enum',
+      type: 'TypeAlias',
+      typealias: 'TypeAlias',
+      type_alias: 'TypeAlias',
+      endpoint: 'Endpoint',
+      route: 'Endpoint',
+      service: 'Service',
+      component: 'Component',
     };
     return aliases[normalized.toLowerCase()] || null;
   }
@@ -181,6 +229,18 @@ export class GraphNormalizerService {
       uses: 'DEPENDS_ON',
       uses_component: 'DEPENDS_ON',
       binds_method: 'DEPENDS_ON',
+      exports: 'EXPORTS',
+      export: 'EXPORTS',
+      exported_from: 'EXPORTS',
+      type_references: 'TYPE_REFERENCES',
+      type_reference: 'TYPE_REFERENCES',
+      types: 'TYPE_REFERENCES',
+      injects: 'INJECTS',
+      inject: 'INJECTS',
+      routes_to: 'ROUTES_TO',
+      route: 'ROUTES_TO',
+      uses_hook: 'USES_HOOK',
+      hook: 'USES_HOOK',
     };
 
     return aliases[normalized] || null;

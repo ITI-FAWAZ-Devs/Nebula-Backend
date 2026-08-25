@@ -203,22 +203,24 @@ export class DraftingOrchestratorService {
         );
 
         let sectionDiagram: ArchitectureDiagram | null = null;
-        try {
-          sectionDiagram = await this.diagramGenerator.generate(
-            context.relationships,
-            context.moduleClusters,
-            [verified],
-            plan.title,
-            context.files,
-          );
-          this.logger.log(
-            `[${repositoryId}] Section diagram "${plan.key}": ${sectionDiagram ? 'present' : 'null'}`,
-          );
-        } catch (diagramError) {
-          this.logger.error(
-            `[${repositoryId}] Failed to generate diagram for "${plan.key}": ${(diagramError as Error).message}`,
-            (diagramError as Error).stack,
-          );
+        if (context.relationships.length > 0) {
+          try {
+            sectionDiagram = await this.diagramGenerator.generate(
+              context.relationships,
+              context.moduleClusters,
+              [verified],
+              plan.title,
+              context.files,
+            );
+            this.logger.log(
+              `[${repositoryId}] Section diagram "${plan.key}": ${sectionDiagram ? 'present' : 'null'}`,
+            );
+          } catch (diagramError) {
+            this.logger.error(
+              `[${repositoryId}] Failed to generate diagram for "${plan.key}": ${(diagramError as Error).message}`,
+              (diagramError as Error).stack,
+            );
+          }
         }
 
         const completedSection: DraftSection = {
@@ -226,6 +228,9 @@ export class DraftingOrchestratorService {
           diagramMermaid: sectionDiagram?.mermaidSource ?? null,
         };
         sections.push(completedSection);
+
+        // Pacing delay between sections to respect free-tier rate limits (15 RPM)
+        await new Promise((resolve) => setTimeout(resolve, 600));
 
         // Persist checkpoint after each section so a crash doesn't lose it
         if (onSectionCheckpoint) {

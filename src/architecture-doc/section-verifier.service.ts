@@ -11,22 +11,31 @@ import { sanitizeSectionMarkdown } from './utils/markdown.util';
 
 interface VerificationResponse {
   verdict: 'verified' | 'unverified' | 'removed';
-  rewrittenBody: string | null;
-  notes: string | null;
+  rewrittenBody?: string | null;
+  notes?: string | null;
 }
 
 function isValidVerificationResponse(
   obj: unknown,
 ): obj is VerificationResponse {
   if (typeof obj !== 'object' || obj === null) return false;
-  const v = obj as VerificationResponse;
-  return (
-    (v.verdict === 'verified' ||
-      v.verdict === 'unverified' ||
-      v.verdict === 'removed') &&
-    (v.rewrittenBody === null || typeof v.rewrittenBody === 'string') &&
-    (v.notes === null || typeof v.notes === 'string')
-  );
+  const v = obj as Record<string, unknown>;
+  const rawVerdict =
+    typeof v.verdict === 'string' ? v.verdict.toLowerCase().trim() : '';
+  const validVerdict =
+    rawVerdict === 'verified' ||
+    rawVerdict === 'unverified' ||
+    rawVerdict === 'removed';
+  const validRewrittenBody =
+    v.rewrittenBody === undefined ||
+    v.rewrittenBody === null ||
+    typeof v.rewrittenBody === 'string';
+  const validNotes =
+    v.notes === undefined ||
+    v.notes === null ||
+    typeof v.notes === 'string';
+
+  return validVerdict && validRewrittenBody && validNotes;
 }
 
 /**
@@ -71,10 +80,12 @@ export class SectionVerifierService {
       options,
     );
 
-    if (verification.verdict === 'verified' && verification.rewrittenBody) {
+    if (verification.verdict === 'verified') {
       return {
         ...section,
-        contentMd: sanitizeSectionMarkdown(verification.rewrittenBody),
+        contentMd: verification.rewrittenBody
+          ? sanitizeSectionMarkdown(verification.rewrittenBody)
+          : section.contentMd,
         verdict: 'verified',
         verificationNotes: null,
       };
@@ -85,7 +96,7 @@ export class SectionVerifierService {
         section,
         context,
         repositoryId,
-        verification.notes,
+        verification.notes ?? null,
         codeRootPath ?? null,
       );
 
@@ -114,7 +125,7 @@ export class SectionVerifierService {
             followUpVerification.rewrittenBody || section.contentMd,
           ),
           verdict: followUpVerification.verdict,
-          verificationNotes: followUpVerification.notes,
+          verificationNotes: followUpVerification.notes ?? null,
         };
       }
     }
@@ -125,7 +136,7 @@ export class SectionVerifierService {
         verification.rewrittenBody || section.contentMd,
       ),
       verdict: verification.verdict,
-      verificationNotes: verification.notes,
+      verificationNotes: verification.notes ?? null,
     };
   }
 
@@ -142,10 +153,21 @@ export class SectionVerifierService {
     options?: { overrideModel?: string },
   ): Promise<VerificationResponse> {
     try {
-      return await extractJsonFromLlmText<VerificationResponse>(
+      const raw = await extractJsonFromLlmText<VerificationResponse>(
         response,
         isValidVerificationResponse,
       );
+      const verdict = (
+        typeof raw.verdict === 'string'
+          ? raw.verdict.toLowerCase().trim()
+          : 'verified'
+      ) as 'verified' | 'unverified' | 'removed';
+      return {
+        verdict,
+        rewrittenBody:
+          typeof raw.rewrittenBody === 'string' ? raw.rewrittenBody : null,
+        notes: typeof raw.notes === 'string' ? raw.notes : null,
+      };
     } catch (error) {
       this.logger.warn(
         `[${section.key}] ${stage} response could not be parsed; requesting corrected JSON: ${(error as Error).message}`,
@@ -162,10 +184,25 @@ export class SectionVerifierService {
           )
         ).text;
 
-        return await extractJsonFromLlmText<VerificationResponse>(
-          corrected,
-          isValidVerificationResponse,
-        );
+        const rawCorrected =
+          await extractJsonFromLlmText<VerificationResponse>(
+            corrected,
+            isValidVerificationResponse,
+          );
+        const verdict = (
+          typeof rawCorrected.verdict === 'string'
+            ? rawCorrected.verdict.toLowerCase().trim()
+            : 'verified'
+        ) as 'verified' | 'unverified' | 'removed';
+        return {
+          verdict,
+          rewrittenBody:
+            typeof rawCorrected.rewrittenBody === 'string'
+              ? rawCorrected.rewrittenBody
+              : null,
+          notes:
+            typeof rawCorrected.notes === 'string' ? rawCorrected.notes : null,
+        };
       } catch (correctedError) {
         this.logger.warn(
           `[${section.key}] ${stage} corrected response could not be parsed; keeping generated content as unverified: ${(correctedError as Error).message}`,
@@ -188,10 +225,12 @@ export class SectionVerifierService {
   ): Promise<HybridRetrievalContext | null> {
     if (!notes) return null;
 
-    const topicMatch = notes.match(/(?:about|regarding|for)\s+([^.]+)/i);
-    if (!topicMatch) return null;
-
-    const focusedTopic = topicMatch[1].trim();
+    const topicMatch = notes.match(
+      /(?:about|regarding|for|lacks|missing|evidence\s+on)\s+([^.]+)/i,
+    );
+    const focusedTopic = topicMatch
+      ? topicMatch[1].trim()
+      : `${section.title}: ${notes.slice(0, 100).trim()}`;
 
     try {
       const followUpContext = await this.hybridRetriever.retrieve(

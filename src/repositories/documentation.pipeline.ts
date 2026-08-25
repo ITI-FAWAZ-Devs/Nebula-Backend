@@ -14,6 +14,7 @@ import { AiProviderService } from '../ai-provider/ai-provider.service';
 import {
   collectionNameFor,
   embeddingSpaceMetadata,
+  chunkIdForFilePath,
 } from '../ai-provider/embedding-space.util';
 import { ChromaService } from '../chroma/chroma.service';
 import { SubscriptionService } from '../subscription/subscription.service';
@@ -283,7 +284,7 @@ export class DocumentationPipeline {
 
         const embeddingMeta = embeddingSpaceMetadata(embedResult);
         const chunks = validDescriptions.map((d, index) => ({
-          id: `${repositoryId}:${d.file}`,
+          id: chunkIdForFilePath(d.file),
           document: d.description,
           metadata: {
             repositoryId,
